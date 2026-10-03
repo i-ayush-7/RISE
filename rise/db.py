@@ -1,0 +1,76 @@
+import sqlite3
+from pathlib import Path
+from contextlib import contextmanager
+
+DEFAULT_DB_PATH = Path("data/rise.db")
+
+def get_connection(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
+    """Get a database connection with foreign keys enabled."""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
+    return conn
+
+@contextmanager
+def transaction(db_path: Path = DEFAULT_DB_PATH):
+    """Context manager for DB transactions."""
+    conn = get_connection(db_path)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def init_db(db_path: Path = DEFAULT_DB_PATH):
+    """Initialize the database schema."""
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with transaction(db_path) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS households (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                address_note TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                household_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                age_group TEXT CHECK(age_group IN ('child', 'adult', 'senior')),
+                support_level TEXT CHECK(support_level IN ('independent', 'needs_assistance', 'dependent')),
+                mobility_needs TEXT,
+                medical_needs TEXT,
+                notes TEXT,
+                is_pet INTEGER DEFAULT 0,
+                FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
+            )
+        """)
+        
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                household_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                relationship TEXT,
+                phone TEXT NOT NULL,
+                priority INTEGER,
+                FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
+            )
+        """)
+        
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meeting_points (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                household_id INTEGER NOT NULL,
+                label TEXT NOT NULL,
+                description TEXT,
+                kind TEXT CHECK(kind IN ('primary', 'backup', 'out_of_area')),
+                FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
+            )
+        """)

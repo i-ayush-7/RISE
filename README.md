@@ -47,3 +47,18 @@ Connected! Initializing session...
 Calling tool 'ping'...
 Result: [TextContent(type='text', text='Pong! RISE MCP Server is running.', annotations=None, meta=None)]
 ```
+
+## Data Model
+
+The server uses a local SQLite database (in `data/rise.db`) to store household emergency information securely. 
+
+The schema includes:
+- **households**: Basic family info and address notes.
+- **members**: Family members (including pets), ages, support levels, and medical/mobility needs.
+- **contacts**: Emergency contacts (e.g., family doctors, out-of-state relatives) with phone numbers and priority.
+- **meeting_points**: Safe gathering spots (primary, backup, out-of-area).
+
+To initialize the database with synthetic demo data, run:
+```bash
+python -m rise.seed
+```
