@@ -62,3 +62,15 @@ To initialize the database with synthetic demo data, run:
 ```bash
 python -m rise.seed
 ```
+
+
+## Available Tools (MCP)
+
+This server exposes several tools for any MCP-compliant client (like Claude Desktop) to plan and manage households:
+
+- `tool_list_households`: Lists all registered households.
+- `tool_get_household_plan`: Retrieves the full plan (members, contacts, meeting points).
+- `tool_list_people_needing_help`: Lists members with mobility/medical needs or who require assistance.
+- `tool_add_member` / `tool_update_member`: Manage household members.
+- `tool_add_contact` / `tool_update_contact`: Manage emergency contacts.
+- `tool_add_meeting_point` / `tool_update_meeting_point`: Manage rally points.

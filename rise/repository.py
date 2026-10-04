@@ -50,11 +50,15 @@ class Repository:
         values.append(member_id)
         
         with transaction(self.db_path) as conn:
-            conn.execute(f"UPDATE members SET {set_clause} WHERE id = ?", values)
+            cursor = conn.execute(f"UPDATE members SET {set_clause} WHERE id = ?", values)
+            if cursor.rowcount == 0:
+                raise LookupError("Not found")
 
     def remove_member(self, member_id: int) -> None:
         with transaction(self.db_path) as conn:
-            conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
+            cursor = conn.execute("DELETE FROM members WHERE id = ?", (member_id,))
+            if cursor.rowcount == 0:
+                raise LookupError("Not found")
 
     def add_contact(self, contact: Contact) -> Contact:
         with transaction(self.db_path) as conn:
@@ -83,11 +87,15 @@ class Repository:
         values.append(contact_id)
         
         with transaction(self.db_path) as conn:
-            conn.execute(f"UPDATE contacts SET {set_clause} WHERE id = ?", values)
+            cursor = conn.execute(f"UPDATE contacts SET {set_clause} WHERE id = ?", values)
+            if cursor.rowcount == 0:
+                raise LookupError("Not found")
 
     def remove_contact(self, contact_id: int) -> None:
         with transaction(self.db_path) as conn:
-            conn.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+            cursor = conn.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+            if cursor.rowcount == 0:
+                raise LookupError("Not found")
 
     def add_meeting_point(self, mp: MeetingPoint) -> MeetingPoint:
         with transaction(self.db_path) as conn:
@@ -116,15 +124,21 @@ class Repository:
         values.append(mp_id)
         
         with transaction(self.db_path) as conn:
-            conn.execute(f"UPDATE meeting_points SET {set_clause} WHERE id = ?", values)
+            cursor = conn.execute(f"UPDATE meeting_points SET {set_clause} WHERE id = ?", values)
+            if cursor.rowcount == 0:
+                raise LookupError("Not found")
 
     def remove_meeting_point(self, mp_id: int) -> None:
         with transaction(self.db_path) as conn:
-            conn.execute("DELETE FROM meeting_points WHERE id = ?", (mp_id,))
+            cursor = conn.execute("DELETE FROM meeting_points WHERE id = ?", (mp_id,))
+            if cursor.rowcount == 0:
+                raise LookupError("Not found")
 
     def remove_household(self, household_id: int) -> None:
         with transaction(self.db_path) as conn:
-            conn.execute("DELETE FROM households WHERE id = ?", (household_id,))
+            cursor = conn.execute("DELETE FROM households WHERE id = ?", (household_id,))
+            if cursor.rowcount == 0:
+                raise LookupError("Not found")
 
     def get_household_summary(self, household_id: int) -> Dict[str, Any]:
         with transaction(self.db_path) as conn:

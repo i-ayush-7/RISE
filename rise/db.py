@@ -1,8 +1,11 @@
 import sqlite3
+import os
 from pathlib import Path
 from contextlib import contextmanager
 
-DEFAULT_DB_PATH = Path("data/rise.db")
+# Resolve data/rise.db relative to this file's directory (rise-mcp/rise/..)
+PROJECT_ROOT = Path(__file__).parent.parent
+DEFAULT_DB_PATH = Path(os.environ.get("RISE_DB_PATH", PROJECT_ROOT / "data" / "rise.db"))
 
 def get_connection(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Get a database connection with foreign keys enabled."""
@@ -48,7 +51,8 @@ def init_db(db_path: Path = DEFAULT_DB_PATH):
                 medical_needs TEXT,
                 notes TEXT,
                 is_pet INTEGER NOT NULL DEFAULT 0 CHECK(is_pet IN (0,1)),
-                FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
+                FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE,
+                CHECK ((age_group = 'pet') = (is_pet = 1))
             )
         """)
         
@@ -74,7 +78,7 @@ def init_db(db_path: Path = DEFAULT_DB_PATH):
                 household_id INTEGER NOT NULL,
                 label TEXT NOT NULL,
                 description TEXT,
-                kind TEXT CHECK(kind IN ('primary', 'backup', 'out_of_area')),
+                kind TEXT NOT NULL CHECK(kind IN ('primary', 'backup', 'out_of_area')),
                 FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
             )
         """)

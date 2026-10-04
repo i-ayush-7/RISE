@@ -121,5 +121,25 @@ class TestDatabase(unittest.TestCase):
             rows = conn.execute("SELECT * FROM members").fetchall()
             self.assertEqual(len(rows), 1)
 
+    def test_pet_inconsistent_age_group(self):
+        h = self.repo.create_household("Test Family")
+        m = Member(id=None, household_id=h.id, name="Buddy", age_group="adult", support_level="independent", is_pet=1)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.repo.add_member(m)
+
+    def test_pet_inconsistent_is_pet(self):
+        h = self.repo.create_household("Test Family")
+        m = Member(id=None, household_id=h.id, name="Buddy", age_group="pet", support_level="independent", is_pet=0)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.repo.add_member(m)
+
+    def test_update_missing_member_raises_lookuperror(self):
+        with self.assertRaises(LookupError):
+            self.repo.update_member(9999, {"name": "Ghost"})
+
+    def test_remove_missing_member_raises_lookuperror(self):
+        with self.assertRaises(LookupError):
+            self.repo.remove_member(9999)
+
 if __name__ == "__main__":
     unittest.main()
