@@ -24,9 +24,10 @@ class TestNWS(unittest.TestCase):
     def test_url_builder(self):
         with patch("urllib.request.urlopen") as mock_urlopen:
             mock_urlopen.side_effect = Exception("Stop")
-            with self.assertRaises(Exception):
-                # Using 30.123456, -86.987654 to ensure formatting
-                NWSAlertProvider("30.123456,-86.987654", fetcher=fetch_json).get_alerts()
+            with self.assertLogs(level="ERROR"):
+                with self.assertRaises(Exception):
+                    # Using 30.123456, -86.987654 to ensure formatting
+                    NWSAlertProvider("30.123456,-86.987654", fetcher=fetch_json).get_alerts()
                 
             req = mock_urlopen.call_args[0][0]
             self.assertEqual(req.full_url, "https://api.weather.gov/alerts/active?point=30.1235,-86.9877")
@@ -98,7 +99,8 @@ class TestNWS(unittest.TestCase):
         
         # Unparseable end kept
         payload = {"features": [{"properties": {"status": "Actual", "event": "Flood Warning", "id": "1", "ends": "bad-time"}}]}
-        alerts = parse_nws_features(payload, now)
+        with self.assertLogs(level="WARNING"):
+            alerts = parse_nws_features(payload, now)
         self.assertEqual(len(alerts), 1)
         
         # ends preferred over expires
@@ -210,7 +212,8 @@ class TestNWS(unittest.TestCase):
             {"invalid": "structure"},
             {"properties": {"status": "Actual", "event": "Flood Warning", "id": "1", "sent": "2026"}}
         ]}
-        self.assertEqual(len(parse_nws_features(payload, DUMMY_NOW)), 1)
+        with self.assertLogs(level="WARNING"):
+            self.assertEqual(len(parse_nws_features(payload, DUMMY_NOW)), 1)
 
     def test_sanitization(self):
         dirty = "Hello\x00\x08World\nNew\r\nLine"
@@ -342,8 +345,9 @@ class TestNWS(unittest.TestCase):
         # Fail then succeed (failure not cached)
         clock_time = 1040
         prov4 = NWSAlertProvider("2,2", fetcher=fake_fetch, clock=fake_clock)
-        with self.assertRaises(AlertServiceUnavailable):
-            prov4.get_alerts()  # fails, calls = 3
+        with self.assertLogs(level="ERROR"):
+            with self.assertRaises(AlertServiceUnavailable):
+                prov4.get_alerts()  # fails, calls = 3
         self.assertEqual(calls, 3)
         
         prov5 = NWSAlertProvider("2,2", fetcher=fake_fetch, clock=fake_clock)
@@ -406,10 +410,11 @@ class TestNWS(unittest.TestCase):
             
         with patch('rise.alerts.get_provider') as mock_prov:
             mock_prov.return_value = NWSAlertProvider("0,0", fetcher=fake_fetch)
-            with self.assertRaises(ToolError) as ctx:
-                with patch('rise.tools.get_repo'):
-                    with patch('rise.tools.resolve_household_id', return_value=1):
-                        get_active_alerts(1)
+            with self.assertLogs(level="ERROR"):
+                with self.assertRaises(ToolError) as ctx:
+                    with patch('rise.tools.get_repo'):
+                        with patch('rise.tools.resolve_household_id', return_value=1):
+                            get_active_alerts(1)
             self.assertEqual(str(ctx.exception), "The live alert service could not be reached. Do not assume there are no active alerts. Check weather.gov or your local authorities.")
             self.assertNotIn("api.weather.gov", str(ctx.exception))
             
@@ -439,6 +444,38 @@ class TestNWS(unittest.TestCase):
                         res = get_active_alerts(1)
                         self.assertEqual(res["data_mode"], "recorded")
                         self.assertEqual(res["retrieved_at"], "2026-10-04T00:00:00+00:00")
+
+    def test_sanitize_keeps_espanol(self):
+        from rise.nws import sanitize
+        self.assertEqual(sanitize("Español 95°F"), "Español 95°F")
+
+    def test_sanitize_removes_invisible(self):
+        from rise.nws import sanitize
+        dirty = "A\u202EB\u200BC\x00D"
+        self.assertEqual(sanitize(dirty), "ABCD")
+
+    def test_recorded_replay_keeps_expired_alerts(self):
+        # end time is after recorded_at but before real current time
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "nws_sample.json"
+            p.write_text('{"recorded_at": "2026-10-01T00:00:00+00:00", "payload": {"features": [{"properties": {"status": "Actual", "event": "Flood Warning", "id": "1", "sent": "2026", "ends": "2026-10-02T00:00:00+00:00"}}]}}')
+            provider = RecordedAlertProvider("sample", fixtures_dir=Path(d))
+            alerts = provider.get_alerts()
+            self.assertEqual(len(alerts), 1)
+
+    def test_filtering_ends_future_expires_past_kept(self):
+        payload = {"features": [{"properties": {"status": "Actual", "event": "Flood Warning", "id": "1", "sent": "2026", "ends": "2026-10-05T00:00:00+00:00", "expires": "2026-10-01T00:00:00+00:00"}}]}
+        # using a now time between expires and ends
+        now = datetime.datetime.fromisoformat("2026-10-04T00:00:00+00:00")
+        alerts = parse_nws_features(payload, now)
+        self.assertEqual(len(alerts), 1)
+
+    def test_committed_sample_parses(self):
+        provider = RecordedAlertProvider("sample")
+        alerts = provider.get_alerts()
+        self.assertTrue(len(alerts) > 0)
+        print("SAMPLE EVENTS:", [a.headline for a in alerts])
 
 if __name__ == "__main__":
     unittest.main()

@@ -137,6 +137,14 @@ def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool, 
             for p in _people_evac_help(plan):
                 add_action(2, p["name"], f"Check on {p['name']}", p.get("mobility_needs") or "")
                 
+        if a.hazard == "other":
+            if a.instructions:
+                add_action(0, None, "Read and follow the official instructions in this alert", "", True)
+            else:
+                add_action(0, None, "Check weather.gov or your local authorities for what to do", "", True)
+            for p in _people_evac_help(plan):
+                add_action(4, p["name"], f"Check on {p['name']}", "")
+                
         if evacuation_mode:
             if a.hazard in ("flood", "cyclone", "wildfire") and sev_rank >= 3:
                 for p in people:
@@ -191,14 +199,6 @@ def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool, 
                     add_action(3, None, "Stay indoors and keep phones charged", "")
                 else:
                     add_action(3, None, "Keep phones charged and watch for updates", "")
-                for p in _people_evac_help(plan):
-                    add_action(4, p["name"], f"Check on {p['name']}", "")
-
-            elif a.hazard == "other":
-                if a.instructions:
-                    add_action(0, None, "Read and follow the official instructions in this alert", "", True)
-                else:
-                    add_action(0, None, "Check weather.gov or your local authorities for what to do", "", True)
                 for p in _people_evac_help(plan):
                     add_action(4, p["name"], f"Check on {p['name']}", "")
                 

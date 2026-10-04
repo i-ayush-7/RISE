@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -356,6 +356,36 @@ class TestAdvice(unittest.TestCase):
         finally:
             if db_path.exists():
                 db_path.unlink()
+
+    def test_other_in_evac_mode(self):
+        plan = {"name": "Fam", "members": []}
+        alerts = [
+            Alert("1", "flood", "warning", "H1", "A", "20", "S", ""),
+            Alert("2", "other", "warning", "H2", "A", "20", "S", instructions="tsunami")
+        ]
+        res = build_advice(plan, alerts, False)
+        actions = [a["action"] for a in res["actions"]]
+        self.assertTrue(any("Read and follow the official instructions" in a for a in actions))
+        self.assertTrue(any("Choose a safe place to go" in a for a in actions))
+        self.assertFalse(any("Stay indoors" in a for a in actions))
+        
+    def test_other_in_evac_mode_cap(self):
+        plan = {
+            "name": "Fam",
+            "members": [{"name": f"A{i}", "is_pet": 0, "support_level": "needs_assistance"} for i in range(7)] + [{"name": "Buddy", "is_pet": 1, "support_level": "dependent"}],
+            "contacts": [{"name": "Doc", "priority": 1}],
+            "meeting_points": [{"label": "Park", "kind": "primary"}]
+        }
+        alerts = [
+            Alert("1", "flood", "warning", "H1", "A", "20", "S", ""),
+            Alert("2", "other", "warning", "H2", "A", "20", "S", instructions="tsunami")
+        ]
+        res = build_advice(plan, alerts, False)
+        actions = [a["action"] for a in res["actions"]]
+        self.assertEqual(len(actions), 8)
+        self.assertTrue(any("Read and follow the official instructions" in a for a in actions))
+        self.assertTrue(any("Head to the primary meeting point" in a for a in actions))
+        self.assertTrue(any("Call Doc first" in a for a in actions))
 
 if __name__ == "__main__":
     unittest.main()
