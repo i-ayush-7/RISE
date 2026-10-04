@@ -3,15 +3,19 @@ from typing import Dict, Any, List, Optional
 from pathlib import Path
 from datetime import datetime
 
-from rise.db import transaction, get_connection
+from rise.db import transaction
+from rise.textutil import clean_text
+
+NO_ACTIVE_MSG = "No check-in is active. Use start_checkin to begin one."
 
 def resolve_member_name(members: List[Dict[str, Any]], query: str) -> Dict[str, Any]:
     query_lower = query.lower().strip()
     
-    # Exact full name match
-    for m in members:
-        if m["name"].lower() == query_lower:
-            return m
+    exact_matches = [m for m in members if m["name"].lower() == query_lower]
+    if len(exact_matches) > 1:
+        raise ValueError(f"Several household members are named {exact_matches[0]['name']}. Rename one in the household plan first.")
+    elif len(exact_matches) == 1:
+        return exact_matches[0]
             
     # Unique first name match
     query_first = query_lower.split()[0]
@@ -29,9 +33,13 @@ def resolve_member_name(members: List[Dict[str, Any]], query: str) -> Dict[str, 
         names = ", ".join(m["name"] for m in members)
         raise ValueError(f"No household member matches that name. Members: {names}")
 
+def _check_aware(now: datetime):
+    if now.tzinfo is None or now.tzinfo.utcoffset(now) is None:
+        raise ValueError("now must be timezone-aware")
+
 def start_incident(db_path: Path, household_id: int, reason: Optional[str], now: datetime):
-    if reason:
-        reason = "".join(c for c in reason if c.isprintable())[:200]
+    _check_aware(now)
+    reason = clean_text(reason, 200)
         
     with transaction(db_path) as conn:
         members = conn.execute("SELECT id FROM members WHERE household_id = ?", (household_id,)).fetchall()
@@ -56,6 +64,7 @@ def start_incident(db_path: Path, household_id: int, reason: Optional[str], now:
             )
 
 def record_checkin(db_path: Path, household_id: int, member_query: str, status: str, note: Optional[str], now: datetime):
+    _check_aware(now)
     if not isinstance(member_query, str) or not member_query.strip():
         raise ValueError("Please say which household member you mean.")
         
@@ -63,13 +72,12 @@ def record_checkin(db_path: Path, household_id: int, member_query: str, status: 
     if status not in valid_statuses:
         raise ValueError(f"Status must be one of: {', '.join(valid_statuses)}")
         
-    if note:
-        note = "".join(c for c in note if c.isprintable())[:300]
+    note = clean_text(note, 300)
         
     with transaction(db_path) as conn:
         inc = conn.execute("SELECT id FROM incidents WHERE household_id = ? AND status = 'active'", (household_id,)).fetchone()
         if not inc:
-            raise ValueError("No check-in is active. Use start_checkin to begin one.")
+            raise ValueError(NO_ACTIVE_MSG)
             
         incident_id = inc["id"]
         members = [dict(m) for m in conn.execute("SELECT * FROM members WHERE household_id = ?", (household_id,)).fetchall()]
@@ -120,7 +128,8 @@ def get_incident_state(db_path: Path, household_id: int) -> Optional[Dict[str, A
         }
 
 def close_incident(db_path: Path, household_id: int, now: datetime):
+    _check_aware(now)
     with transaction(db_path) as conn:
         cur = conn.execute("UPDATE incidents SET status = 'closed', closed_at = ? WHERE household_id = ? AND status = 'active'", (now.isoformat(), household_id))
         if cur.rowcount == 0:
-            raise ValueError("No check-in is active.")
+            raise ValueError(NO_ACTIVE_MSG)

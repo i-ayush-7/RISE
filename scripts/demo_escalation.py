@@ -34,6 +34,7 @@ def run_demo():
         for m in plan.get("members", []):
             st = "safe" if m["name"] in ("Maria Rivera", "Carlos Rivera") else "pending"
             members_state.append({
+                "member_id": m["id"],
                 "name": m["name"],
                 "is_pet": m["is_pet"],
                 "status": st,
@@ -60,6 +61,7 @@ def run_demo():
                 st = "needs_help"
                 note = "fell and cannot stand"
             members_state2.append({
+                "member_id": m["id"],
                 "name": m["name"],
                 "is_pet": m["is_pet"],
                 "status": st,
@@ -75,6 +77,32 @@ def run_demo():
         res2 = build_escalation(plan, state2, now2)
         print(f"\n--- At 3 minutes ---")
         print(json.dumps(res2, indent=2))
+        
+        print("\n=== SCENARIO 3: Elena needs help at 12 minutes ===")
+        members_state3 = []
+        for m in plan.get("members", []):
+            st = "safe" if m["name"] in ("Maria Rivera", "Carlos Rivera", "Leo Rivera") else "pending"
+            note = ""
+            if m["name"] == "Elena Rivera":
+                st = "needs_help"
+                note = "fell and cannot stand"
+            members_state3.append({
+                "member_id": m["id"],
+                "name": m["name"],
+                "is_pet": m["is_pet"],
+                "status": st,
+                "note": note
+            })
+            
+        state3 = {
+            "started_at": started_at.isoformat(),
+            "members": members_state3
+        }
+        
+        now3 = started_at + timedelta(minutes=12)
+        res3 = build_escalation(plan, state3, now3)
+        print(f"\n--- At 12 minutes ---")
+        print(json.dumps(res3, indent=2))
         
     finally:
         if temp_db_path.exists():

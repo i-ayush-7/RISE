@@ -16,11 +16,11 @@ class TestEscalation(unittest.TestCase):
         self.rivera_plan = {
             "name": "The Rivera Family",
             "members": [
-                {"name": "Maria", "is_pet": 0, "support_level": "independent", "mobility_needs": ""},
-                {"name": "Carlos", "is_pet": 0, "support_level": "independent", "mobility_needs": ""},
-                {"name": "Elena", "is_pet": 0, "support_level": "needs_assistance", "mobility_needs": "Uses a cane", "medical_needs": "High blood pressure medication"},
-                {"name": "Leo", "is_pet": 0, "support_level": "dependent", "mobility_needs": ""},
-                {"name": "Buddy", "is_pet": 1, "support_level": "dependent", "mobility_needs": ""}
+                {"id": 1, "name": "Maria", "is_pet": 0, "support_level": "independent", "mobility_needs": ""},
+                {"id": 2, "name": "Carlos", "is_pet": 0, "support_level": "independent", "mobility_needs": ""},
+                {"id": 3, "name": "Elena", "is_pet": 0, "support_level": "needs_assistance", "mobility_needs": "Uses a cane", "medical_needs": "High blood pressure medication"},
+                {"id": 4, "name": "Leo", "is_pet": 0, "support_level": "dependent", "mobility_needs": ""},
+                {"id": 5, "name": "Buddy", "is_pet": 1, "support_level": "dependent", "mobility_needs": ""}
             ],
             "contacts": [
                 {"name": "Uncle Juan", "priority": 1, "phone": "555-0199"},
@@ -33,7 +33,9 @@ class TestEscalation(unittest.TestCase):
         for name, status in statuses.items():
             pm = next((m for m in self.rivera_plan["members"] if m["name"] == name), None)
             is_pet = pm["is_pet"] if pm else (1 if name == "Buddy" else 0)
+            m_id = pm["id"] if pm else 0
             members.append({
+                "member_id": m_id,
                 "name": name,
                 "is_pet": is_pet,
                 "status": status,
@@ -79,11 +81,15 @@ class TestEscalation(unittest.TestCase):
         
         esc = build_escalation(self.rivera_plan, state, self.now)
         steps = esc["next_steps"]
-        names = [s["who"] for s in steps if s["priority"] == 1]
+        names = [s["who"] for s in steps if s["priority"] == 1 and s["who"] is not None]
         
         self.assertEqual(len(names), 6)
         self.assertIn("Elena", names)
         self.assertIn("Leo", names)
+        
+        more_steps = [s for s in steps if s["priority"] == 1 and s["who"] is None]
+        self.assertEqual(len(more_steps), 1)
+        self.assertTrue(more_steps[0]["action"].startswith("Also check on 2 more:"))
 
     def test_needs_help_produces_p0(self):
         state = self._state_from_statuses({"Elena": "needs_help"}, 0)
@@ -222,7 +228,7 @@ class TestEscalation(unittest.TestCase):
         self.assertIn("Buddy not yet confirmed.", esc["speakable"])
         
         # 2 pets pending
-        self.rivera_plan["members"].append({"name": "Rex", "is_pet": 1, "support_level": "dependent"})
+        self.rivera_plan["members"].append({"id": 6, "name": "Rex", "is_pet": 1, "support_level": "dependent"})
         state = self._state_from_statuses({"Buddy": "pending", "Rex": "pending"}, 0)
         esc = build_escalation(self.rivera_plan, state, self.now)
         pet_step = next(s for s in esc["next_steps"] if s["priority"] == 5)

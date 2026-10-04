@@ -210,5 +210,41 @@ class TestCheckinsDataLayer(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_clean_text(self):
+        from rise.textutil import clean_text
+        self.assertEqual(clean_text("fell\nand cannot stand", 100), "fell and cannot stand")
+        self.assertEqual(clean_text("Español 95°F", 100), "Español 95°F")
+        self.assertIsNone(clean_text("   \n\t ", 100))
+        # U+202E is Right-to-Left Override (Cf category)
+        self.assertEqual(clean_text("test\u202e\x00", 100), "test")
+        self.assertEqual(clean_text("A" * 200, 100), "A" * 100)
+        
+    def test_no_active_msg(self):
+        from rise.checkins import NO_ACTIVE_MSG
+        with self.assertRaisesRegex(ValueError, NO_ACTIVE_MSG):
+            record_checkin(self.db_path, self.hh.id, "Alice", "safe", None, self.now)
+            
+        with self.assertRaisesRegex(ValueError, NO_ACTIVE_MSG):
+            close_incident(self.db_path, self.hh.id, self.now)
+            
+    def test_resolve_same_full_name(self):
+        from rise.checkins import resolve_member_name
+        members = [
+            {"id": 1, "name": "John Smith"},
+            {"id": 2, "name": "John Smith"}
+        ]
+        with self.assertRaisesRegex(ValueError, "Several household members are named John Smith. Rename one in the household plan first."):
+            resolve_member_name(members, "John Smith")
+            
+    def test_naive_datetime_rejected_checkins(self):
+        from datetime import datetime
+        naive = datetime.now()
+        with self.assertRaisesRegex(ValueError, "now must be timezone-aware"):
+            start_incident(self.db_path, self.hh.id, "R", naive)
+        with self.assertRaisesRegex(ValueError, "now must be timezone-aware"):
+            record_checkin(self.db_path, self.hh.id, "A", "safe", None, naive)
+        with self.assertRaisesRegex(ValueError, "now must be timezone-aware"):
+            close_incident(self.db_path, self.hh.id, naive)
+
 if __name__ == "__main__":
     unittest.main()
