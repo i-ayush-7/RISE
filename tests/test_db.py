@@ -7,7 +7,7 @@ from rise.models import Member, Contact, MeetingPoint
 
 class TestDatabase(unittest.TestCase):
     def setUp(self):
-        self.db_path = Path("tests/test_rise.db")
+        self.db_path = Path(__file__).parent / "test_rise.db"
         if self.db_path.exists():
             self.db_path.unlink()
         init_db(self.db_path)

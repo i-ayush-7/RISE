@@ -3,6 +3,7 @@ import os
 import logging
 from pathlib import Path
 from typing import Dict, List, Any, Optional
+from mcp.server.mcpserver.exceptions import ToolError
 from rise.repository import Repository
 from rise.models import Member, Contact, MeetingPoint
 
@@ -15,16 +16,16 @@ def _convert_error(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
-        except ValueError:
-            raise
+        except ValueError as e:
+            raise ToolError(str(e))
         except LookupError:
-            raise ValueError("Record not found.")
+            raise ToolError("Record not found.")
         except sqlite3.Error as e:
             logging.getLogger(__name__).error("Database error: %s", str(e), exc_info=True)
-            raise ValueError("A database error occurred while processing your request.")
+            raise ToolError("A database error occurred while processing your request.")
         except Exception as e:
             logging.getLogger(__name__).error("Unexpected error: %s", str(e), exc_info=True)
-            raise ValueError("An unexpected error occurred.")
+            raise ToolError("An unexpected error occurred.")
     return wrapper
 
 def resolve_household_id(repo: Repository, household_id: Optional[int]) -> int:
@@ -34,6 +35,10 @@ def resolve_household_id(repo: Repository, household_id: Optional[int]) -> int:
         households = cursor.fetchall()
         
     if household_id is not None:
+        if isinstance(household_id, bool) or not isinstance(household_id, int):
+            raise ValueError("household_id must be an integer")
+        if not any(h['id'] == household_id for h in households):
+            raise ValueError("Household not found.")
         return household_id
         
     if len(households) == 1:
@@ -113,14 +118,28 @@ def get_household_plan(household_id: Optional[int] = None) -> Dict[str, Any]:
     pet_count = len(pets)
     help_count = len(needs_help)
     
-    mem_word = "member" if mem_count == 1 else "members"
-    pet_word = "pet" if pet_count == 1 else "pets"
-    help_word = "person needs" if help_count == 1 else "people need"
-    
-    pet_str = f" including {pet_count} {pet_word}" if pet_count > 0 else ""
-    help_str = f" {help_count} {help_word} assistance." if help_count > 0 else " Everyone is independent."
-    
-    summary_str = f"{name}: {mem_count} {mem_word}{pet_str}.{help_str}"
+    parts = []
+    if mem_count == 0 and pet_count == 0:
+        parts.append(f"{name} has no members yet.")
+    elif mem_count == 0:
+        pet_word = "pet" if pet_count == 1 else "pets"
+        parts.append(f"{name} has {pet_count} {pet_word} and no people.")
+    else:
+        mem_word = "person" if mem_count == 1 else "people"
+        if pet_count == 0:
+            parts.append(f"{name} has {mem_count} {mem_word}.")
+        else:
+            pet_word = "pet" if pet_count == 1 else "pets"
+            parts.append(f"{name} has {mem_count} {mem_word} and {pet_count} {pet_word}.")
+            
+    if mem_count > 0:
+        if help_count == 0:
+            parts.append("Everyone is independent.")
+        else:
+            help_word = "person needs" if help_count == 1 else "people need"
+            parts.append(f"{help_count} {help_word} assistance.")
+            
+    summary_str = " ".join(parts)
     
     summary_data['summary'] = summary_str
     summary_data['pets'] = pets

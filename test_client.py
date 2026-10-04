@@ -35,10 +35,25 @@ async def run_client():
                     "age_group": "ghost",
                     "support_level": "independent"
                 })
+                if invalid_member.is_error:
+                    print("Error from server:")
                 for block in invalid_member.content:
                     print(block.text)
             except Exception as e:
-                print(f"Error from server: {e}")
+                print(f"Exception from server: {e}")
+
+            print("\nCalling update_member with missing member_id 9999...")
+            try:
+                missing_member = await session.call_tool("update_member", {
+                    "member_id": 9999,
+                    "name": "Ghost"
+                })
+                if missing_member.is_error:
+                    print("Error from server:")
+                for block in missing_member.content:
+                    print(block.text)
+            except Exception as e:
+                print(f"Exception from server: {e}")
 
 if __name__ == "__main__":
     asyncio.run(run_client())
