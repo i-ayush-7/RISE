@@ -23,6 +23,8 @@ def _convert_error(func):
         except sqlite3.Error as e:
             logging.getLogger(__name__).error("Database error: %s", str(e), exc_info=True)
             raise ToolError("A database error occurred while processing your request.")
+        except ToolError:
+            raise
         except Exception as e:
             logging.getLogger(__name__).error("Unexpected error: %s", str(e), exc_info=True)
             raise ToolError("An unexpected error occurred.")
@@ -291,10 +293,20 @@ def get_active_alerts(household_id: Optional[int] = None) -> Dict[str, Any]:
     hid = resolve_household_id(repo, household_id)  # validate household exists
     from rise.alerts import get_provider
     provider = get_provider()
-    alerts = provider.get_alerts()
+    try:
+        alerts = provider.get_alerts()
+    except Exception as e:
+        if type(e).__name__ == "AlertServiceUnavailable":
+            import logging
+            logging.getLogger(__name__).error(f"Alert service unavailable: {e}")
+            raise ToolError("The live alert service could not be reached. Do not assume there are no active alerts. Check weather.gov or your local authorities.")
+        raise
+        
     return {
         "source": provider.name,
+        "data_mode": getattr(provider, "data_mode", "simulated"),
         "is_simulated": provider.is_simulated,
+        "retrieved_at": getattr(provider, "retrieved_at", ""),
         "alerts": [a.__dict__ for a in alerts]
     }
 
@@ -303,7 +315,17 @@ def get_safety_advice(household_id: Optional[int] = None) -> Dict[str, Any]:
     plan = _load_plan(household_id)
     from rise.alerts import get_provider
     provider = get_provider()
-    alerts = provider.get_alerts()
-    
+    try:
+        alerts = provider.get_alerts()
+    except Exception as e:
+        if type(e).__name__ == "AlertServiceUnavailable":
+            import logging
+            logging.getLogger(__name__).error(f"Alert service unavailable: {e}")
+            raise ToolError("The live alert service could not be reached. Do not assume there are no active alerts. Check weather.gov or your local authorities.")
+        raise
+        
     from rise.advice import build_advice
-    return build_advice(plan, alerts, provider.is_simulated)
+    result = build_advice(plan, alerts, provider.is_simulated, getattr(provider, "data_mode", "simulated"))
+    result["source"] = provider.name
+    result["retrieved_at"] = getattr(provider, "retrieved_at", "")
+    return result

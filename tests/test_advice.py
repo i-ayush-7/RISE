@@ -108,14 +108,16 @@ class TestAdvice(unittest.TestCase):
         self.assertTrue(any("Choose a safe place to go" in a["action"] for a in res["actions"]))
         
     def test_multiple_alerts_dedup(self):
-        plan = {"name": "Fam", "members": [{"name": "John", "is_pet": 0, "support_level": "independent"}]}
+        plan = {"name": "Fam", "members": [{"name": "John", "is_pet": 0, "support_level": "needs_assistance", "mobility_needs": "cane"}]}
         alerts = [
             Alert("1", "flood", "watch", "H1", "A", "20", "S"),
             Alert("2", "flood", "warning", "H2", "A", "20", "S")
         ]
         res = build_advice(plan, alerts, False)
-        # Should use highest severity (warning)
         self.assertEqual(res["urgency"], "high")
+        actions = [a["action"] for a in res["actions"]]
+        self.assertFalse(any("Review meeting point" in a for a in actions))
+        self.assertTrue(any("Start moving" in a for a in actions))
         
     def test_identical_input(self):
         plan = {"name": "Fam", "members": [{"name": "John", "is_pet": 0, "support_level": "independent"}]}
@@ -166,6 +168,27 @@ class TestAdvice(unittest.TestCase):
         self.assertTrue(any("Head to the primary meeting point" in a["action"] for a in actions))
         priorities = [a["priority"] for a in actions]
         self.assertEqual(priorities, sorted(priorities))
+
+    def test_cap_earthquake_and_flood(self):
+        plan = {
+            "name": "Fam",
+            "members": [
+                {"name": f"P{i}", "age_group": "adult", "is_pet": 0, "support_level": "needs_assistance"} for i in range(7)
+            ] + [{"name": "Dog", "age_group": "pet", "is_pet": 1, "support_level": "dependent"}],
+            "contacts": [{"name": "Doc", "priority": 1}],
+            "meeting_points": [{"label": "Park", "kind": "primary"}]
+        }
+        alerts = [
+            Alert("1", "flood", "warning", "H1", "A", "20", "S"),
+            Alert("2", "earthquake", "warning", "H2", "A", "20", "S")
+        ]
+        res = build_advice(plan, alerts, False)
+        self.assertEqual(len(res["actions"]), 8)
+        self.assertEqual(res["actions"][0]["action"], "Drop, cover and hold on")
+        
+        actions = res["actions"]
+        self.assertTrue(any("Call Doc first" in a["action"] for a in actions))
+        self.assertTrue(any("Head to the primary meeting point" in a["action"] for a in actions))
 
     def test_earthquake_in_evac_mode(self):
         plan = {
@@ -275,7 +298,7 @@ class TestAdvice(unittest.TestCase):
         os.environ["RISE_FIXTURE_SCENARIO"] = "flood_warning"
         
         import subprocess, sys
-        subprocess.run([sys.executable, "-m", "rise.seed"], check=True, env=os.environ)
+        subprocess.run([sys.executable, "-m", "rise.seed"], check=True, capture_output=True, text=True, env=os.environ)
         
         try:
             res = rise.tools.get_safety_advice(1)

@@ -35,7 +35,16 @@ class Alert:
 
 class AlertProvider(ABC):
     name: str
-    is_simulated: bool
+    data_mode: str
+    is_simulated: property
+
+    @property
+    def is_simulated(self):
+        return self.data_mode != "live"
+        
+    @is_simulated.setter
+    def is_simulated(self, value):
+        pass
 
     @abstractmethod
     def get_alerts(self) -> List[Alert]:
@@ -44,11 +53,13 @@ class AlertProvider(ABC):
 class FixtureAlertProvider(AlertProvider):
     def __init__(self, scenario: str, fixtures_dir: Optional[Path] = None):
         self.name = "fixture"
-        self.is_simulated = True
+        self.data_mode = "simulated"
         self.scenario = scenario
         self.fixtures_dir = fixtures_dir if fixtures_dir is not None else Path(__file__).parent.parent / "fixtures"
 
     def get_alerts(self) -> List[Alert]:
+        import datetime
+        self.retrieved_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
         filepath = self.fixtures_dir / f"alerts_{self.scenario}.json"
         if not filepath.exists():
             raise ValueError(f"Fixture file not found: {filepath.name}")
@@ -93,12 +104,18 @@ class FixtureAlertProvider(AlertProvider):
 
 def get_provider() -> AlertProvider:
     source = os.environ.get("RISE_ALERT_SOURCE", "fixture")
-    scenario = os.environ.get("RISE_FIXTURE_SCENARIO", "flood_warning")
-    
-    if source != "fixture":
-        raise ValueError(f"Unknown alert source: {source}. Valid values: fixture")
-        
-    if not re.match(r'^[a-z0-9_]+$', scenario):
-        raise ValueError("Invalid scenario name. Only lowercase letters, digits, and underscores allowed.")
-        
-    return FixtureAlertProvider(scenario)
+    if source == "fixture":
+        scenario = os.environ.get("RISE_FIXTURE_SCENARIO", "flood_warning")
+        if not re.match(r'^[a-z0-9_]+$', scenario):
+            raise ValueError("Invalid scenario name. Only lowercase letters, digits, and underscores allowed.")
+        return FixtureAlertProvider(scenario)
+    elif source == "nws":
+        point = os.environ.get("RISE_NWS_POINT", "")
+        import rise.nws
+        return rise.nws.NWSAlertProvider(point)
+    elif source == "nws_recorded":
+        recording = os.environ.get("RISE_NWS_RECORDING", "sample")
+        import rise.nws
+        return rise.nws.RecordedAlertProvider(recording)
+    else:
+        raise ValueError(f"Unknown alert source: {source}. Valid options: fixture, nws, nws_recorded")

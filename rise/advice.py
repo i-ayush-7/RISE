@@ -32,16 +32,25 @@ def _is_p1_evac(m: Dict[str, Any]) -> bool:
         return True
     return False
 
-def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool) -> Dict[str, Any]:
+def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool, data_mode: str = None) -> Dict[str, Any]:
+    if data_mode is None:
+        data_mode = "simulated" if is_simulated else "live"
+        
     highest_alerts = _get_highest_severity_alerts(alerts)
     highest_alerts.sort(key=lambda a: (-SEVERITY_RANK[a.severity], HAZARD_RANK[a.hazard]))
     
+    prefix = ""
+    if data_mode == "simulated":
+        prefix = "This is a simulated alert. "
+    elif data_mode == "recorded":
+        prefix = "This is a replay of a past alert, not a live warning. "
+    
     if not highest_alerts:
         headline = f"No active alerts for {plan.get('name', 'Household')}."
-        if is_simulated:
-            headline = f"This is a simulated alert. {headline}"
+        headline = prefix + headline
             
         return {
+            "data_mode": data_mode,
             "is_simulated": is_simulated,
             "urgency": "none",
             "headline": headline,
@@ -86,8 +95,7 @@ def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool) 
         help_text = f": {help_count} {noun} need extra help." if help_count > 0 else "."
         
     headline = f"{alert_names} for {plan.get('name', 'Household')}{help_text}"
-    if is_simulated:
-        headline = f"This is a simulated alert. {headline}"
+    headline = prefix + headline
         
     # Official Instructions
     official_instructions = []
@@ -209,11 +217,13 @@ def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool) 
         final_actions.sort(key=lambda x: (x["priority"], x["who"] or ""))
         
     for a in final_actions:
-        del a["_mandatory"]
+        if "_mandatory" in a:
+            del a["_mandatory"]
     
     return {
+        "data_mode": data_mode,
         "is_simulated": is_simulated,
-        "urgency": urgency,
+        "urgency": "none" if not highest_alerts else urgency,
         "headline": headline,
         "official_instructions": official_instructions,
         "actions": final_actions,

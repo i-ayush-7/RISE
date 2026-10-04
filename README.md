@@ -80,15 +80,18 @@ This server exposes several tools for any MCP-compliant client (like Claude Desk
 ## Configuration
 You can set the following environment variables:
 - `RISE_DB_PATH`: Override the default database path.
-- `RISE_ALERT_SOURCE`: The source of alerts (default: `fixture`).
-- `RISE_FIXTURE_SCENARIO`: The active scenario for simulated alerts. Valid values: `flood_warning`, `heatwave_warning`, `none` (default: `flood_warning`).
+- `RISE_ALERT_SOURCE`: The source of alerts. Valid values: `fixture`, `nws`, `nws_recorded` (default: `fixture`).
+- `RISE_FIXTURE_SCENARIO`: The active scenario for simulated alerts (e.g. `flood_warning`, `heatwave_warning`, `none`).
+- `RISE_NWS_POINT`: Coordinates for NWS alerts when source is `nws` (e.g., `30.7,-86.5`).
+- `RISE_NWS_RECORDING`: The name of the recording file when source is `nws_recorded` (e.g., `sample`).
 
 Example with environment variables:
 ```bash
 # Windows PowerShell
-$env:RISE_FIXTURE_SCENARIO="heatwave_warning"
+$env:RISE_ALERT_SOURCE="nws"
+$env:RISE_NWS_POINT="30.7,-86.5"
 .\venv\Scripts\python.exe server.py
 
 # Mac/Linux
-RISE_FIXTURE_SCENARIO=heatwave_warning ./venv/bin/python server.py
+RISE_ALERT_SOURCE=nws RISE_NWS_POINT=30.7,-86.5 ./venv/bin/python server.py
 ```
