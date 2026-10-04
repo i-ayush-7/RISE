@@ -157,12 +157,57 @@ class TestAdvice(unittest.TestCase):
             "contacts": [{"name": "Doc", "priority": 1}],
             "meeting_points": [{"label": "Park", "kind": "primary"}]
         }
+        # Candidates: 7 adults * P1 = 7. 1 MP = P3. 1 Contact = P4. 1 Pet = P6, P7. Total = 11.
         alerts = [Alert("1", "flood", "warning", "H1", "A", "20", "S")]
         res = build_advice(plan, alerts, False)
         self.assertEqual(len(res["actions"]), 8)
         actions = res["actions"]
         self.assertTrue(any("Call Doc first" in a["action"] for a in actions))
         self.assertTrue(any("Head to the primary meeting point" in a["action"] for a in actions))
+        priorities = [a["priority"] for a in actions]
+        self.assertEqual(priorities, sorted(priorities))
+
+    def test_earthquake_in_evac_mode(self):
+        plan = {
+            "name": "Fam",
+            "members": [{"name": "A", "is_pet": 0, "support_level": "independent"}]
+        }
+        alerts = [
+            Alert("1", "flood", "warning", "H1", "A", "20", "S", ""),
+            Alert("2", "earthquake", "warning", "H2", "A", "20", "S", "")
+        ]
+        res = build_advice(plan, alerts, False)
+        self.assertEqual(res["actions"][0]["action"], "Drop, cover and hold on")
+        self.assertEqual(res["actions"][0]["priority"], 0)
+        self.assertTrue(any("Choose a safe place" in a["action"] for a in res["actions"]))
+        self.assertTrue(len(res["actions"]) <= 8)
+
+    def test_earthquake_help_count(self):
+        plan = {
+            "name": "Fam",
+            "members": [
+                {"name": "A", "is_pet": 0, "support_level": "needs_assistance"},
+                {"name": "B", "is_pet": 0, "support_level": "independent"},
+            ]
+        }
+        alerts = [Alert("1", "earthquake", "warning", "H1", "A", "20", "S", "")]
+        res = build_advice(plan, alerts, False)
+        check_on_actions = [a for a in res["actions"] if a["action"].startswith("Check on")]
+        self.assertEqual(len(check_on_actions), 1)
+        self.assertIn("1 person may need help after the shaking stops", res["headline"])
+
+    def test_two_evacuation_hazards(self):
+        plan = {
+            "name": "Fam",
+            "members": [{"name": "A", "is_pet": 0, "support_level": "independent"}]
+        }
+        alerts = [
+            Alert("1", "flood", "warning", "H1", "A", "20", "S", ""),
+            Alert("2", "wildfire", "emergency", "H2", "A", "20", "S", "")
+        ]
+        res = build_advice(plan, alerts, False)
+        head_actions = [a for a in res["actions"] if "Choose a safe place to go" in a["action"]]
+        self.assertEqual(len(head_actions), 1)
 
     def test_action_sorting(self):
         plan = {

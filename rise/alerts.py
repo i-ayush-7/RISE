@@ -56,6 +56,8 @@ class FixtureAlertProvider(AlertProvider):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
+        except UnicodeDecodeError:
+            raise ValueError("Fixture file is invalid: not valid UTF-8 text")
         except json.JSONDecodeError:
             raise ValueError("Fixture file is invalid: invalid JSON")
             
@@ -77,6 +79,14 @@ class FixtureAlertProvider(AlertProvider):
             for key in item.keys():
                 if key not in valid_fields:
                     raise ValueError(f"Fixture file is invalid: unknown field {key}")
+                    
+            for key, val in item.items():
+                if key in ('instructions', 'expires_at'):
+                    if val is not None and not isinstance(val, str):
+                        raise ValueError(f"Fixture file is invalid: {key} must be text")
+                else:
+                    if not isinstance(val, str) or val == "":
+                        raise ValueError(f"Fixture file is invalid: {key} must be text")
                     
             alerts.append(Alert(**item))
         return alerts

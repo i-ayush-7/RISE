@@ -124,6 +124,11 @@ def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool) 
     for a in highest_alerts:
         sev_rank = SEVERITY_RANK[a.severity]
         
+        if a.hazard == "earthquake":
+            add_action(0, None, "Drop, cover and hold on", "", True)
+            for p in _people_evac_help(plan):
+                add_action(2, p["name"], f"Check on {p['name']}", p.get("mobility_needs") or "")
+                
         if evacuation_mode:
             if a.hazard in ("flood", "cyclone", "wildfire") and sev_rank >= 3:
                 for p in people:
@@ -173,12 +178,6 @@ def build_advice(plan: Dict[str, Any], alerts: List[Alert], is_simulated: bool) 
                     pet_names = " and ".join([p["name"] for p in pets])
                     add_action(5, pet_names, f"Provide warm shelter and water for {pet_names}", "")
                     
-            elif a.hazard == "earthquake":
-                add_action(1, None, "Drop, cover and hold on", "")
-                for p in people:
-                    if p.get("mobility_needs"):
-                        add_action(2, p["name"], f"Check on {p['name']}", p.get("mobility_needs"))
-                        
             elif a.hazard in ("storm", "other"):
                 if sev_rank >= 3:
                     add_action(3, None, "Stay indoors and keep phones charged", "")
