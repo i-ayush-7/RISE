@@ -42,15 +42,17 @@ def init_db(db_path: Path = DEFAULT_DB_PATH):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 household_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                age_group TEXT CHECK(age_group IN ('child', 'adult', 'senior')),
-                support_level TEXT CHECK(support_level IN ('independent', 'needs_assistance', 'dependent')),
+                age_group TEXT NOT NULL CHECK(age_group IN ('child', 'adult', 'senior', 'pet')),
+                support_level TEXT NOT NULL CHECK(support_level IN ('independent', 'needs_assistance', 'dependent')),
                 mobility_needs TEXT,
                 medical_needs TEXT,
                 notes TEXT,
-                is_pet INTEGER DEFAULT 0,
+                is_pet INTEGER NOT NULL DEFAULT 0 CHECK(is_pet IN (0,1)),
                 FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
             )
         """)
+        
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_members_household_id ON members(household_id)")
         
         conn.execute("""
             CREATE TABLE IF NOT EXISTS contacts (
@@ -59,10 +61,12 @@ def init_db(db_path: Path = DEFAULT_DB_PATH):
                 name TEXT NOT NULL,
                 relationship TEXT,
                 phone TEXT NOT NULL,
-                priority INTEGER,
+                priority INTEGER NOT NULL DEFAULT 1 CHECK(priority >= 1),
                 FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
             )
         """)
+        
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contacts_household_id ON contacts(household_id)")
         
         conn.execute("""
             CREATE TABLE IF NOT EXISTS meeting_points (
@@ -74,3 +78,5 @@ def init_db(db_path: Path = DEFAULT_DB_PATH):
                 FOREIGN KEY(household_id) REFERENCES households(id) ON DELETE CASCADE
             )
         """)
+        
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_meeting_points_household_id ON meeting_points(household_id)")

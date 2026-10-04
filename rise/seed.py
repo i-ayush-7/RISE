@@ -22,7 +22,7 @@ def seed_data(db_path: Path = DEFAULT_DB_PATH):
         Member(id=None, household_id=household.id, name="Carlos Rivera", age_group="adult", support_level="independent", notes="Father"),
         Member(id=None, household_id=household.id, name="Elena Rivera", age_group="senior", support_level="needs_assistance", mobility_needs="Uses a cane, cannot walk long distances", medical_needs="High blood pressure medication"),
         Member(id=None, household_id=household.id, name="Leo Rivera", age_group="child", support_level="dependent", notes="6 years old"),
-        Member(id=None, household_id=household.id, name="Buddy", age_group="adult", support_level="dependent", is_pet=1, notes="Golden Retriever, very friendly")
+        Member(id=None, household_id=household.id, name="Buddy", age_group="pet", support_level="dependent", is_pet=1, notes="Golden Retriever, very friendly")
     ]
     
     for m in members:

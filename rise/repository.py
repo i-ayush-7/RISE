@@ -37,16 +37,20 @@ class Repository:
             cursor = conn.execute("SELECT * FROM members WHERE household_id = ?", (household_id,))
             return [Member(**dict(row)) for row in cursor.fetchall()]
 
-    def update_member(self, member: Member) -> None:
+    def update_member(self, member_id: int, updates: Dict[str, Any]) -> None:
+        allowlist = {'name', 'age_group', 'support_level', 'mobility_needs', 'medical_needs', 'notes', 'is_pet'}
+        if not updates:
+            return
+        for key in updates.keys():
+            if key not in allowlist:
+                raise ValueError(f"Disallowed column name: {key}")
+                
+        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values())
+        values.append(member_id)
+        
         with transaction(self.db_path) as conn:
-            conn.execute(
-                """UPDATE members 
-                   SET name = ?, age_group = ?, support_level = ?, mobility_needs = ?, 
-                       medical_needs = ?, notes = ?, is_pet = ?
-                   WHERE id = ?""",
-                (member.name, member.age_group, member.support_level, member.mobility_needs,
-                 member.medical_needs, member.notes, member.is_pet, member.id)
-            )
+            conn.execute(f"UPDATE members SET {set_clause} WHERE id = ?", values)
 
     def remove_member(self, member_id: int) -> None:
         with transaction(self.db_path) as conn:
@@ -66,14 +70,20 @@ class Repository:
             cursor = conn.execute("SELECT * FROM contacts WHERE household_id = ?", (household_id,))
             return [Contact(**dict(row)) for row in cursor.fetchall()]
 
-    def update_contact(self, contact: Contact) -> None:
+    def update_contact(self, contact_id: int, updates: Dict[str, Any]) -> None:
+        allowlist = {'name', 'relationship', 'phone', 'priority'}
+        if not updates:
+            return
+        for key in updates.keys():
+            if key not in allowlist:
+                raise ValueError(f"Disallowed column name: {key}")
+                
+        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values())
+        values.append(contact_id)
+        
         with transaction(self.db_path) as conn:
-            conn.execute(
-                """UPDATE contacts 
-                   SET name = ?, relationship = ?, phone = ?, priority = ?
-                   WHERE id = ?""",
-                (contact.name, contact.relationship, contact.phone, contact.priority, contact.id)
-            )
+            conn.execute(f"UPDATE contacts SET {set_clause} WHERE id = ?", values)
 
     def remove_contact(self, contact_id: int) -> None:
         with transaction(self.db_path) as conn:
@@ -93,14 +103,20 @@ class Repository:
             cursor = conn.execute("SELECT * FROM meeting_points WHERE household_id = ?", (household_id,))
             return [MeetingPoint(**dict(row)) for row in cursor.fetchall()]
 
-    def update_meeting_point(self, mp: MeetingPoint) -> None:
+    def update_meeting_point(self, mp_id: int, updates: Dict[str, Any]) -> None:
+        allowlist = {'label', 'description', 'kind'}
+        if not updates:
+            return
+        for key in updates.keys():
+            if key not in allowlist:
+                raise ValueError(f"Disallowed column name: {key}")
+                
+        set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
+        values = list(updates.values())
+        values.append(mp_id)
+        
         with transaction(self.db_path) as conn:
-            conn.execute(
-                """UPDATE meeting_points 
-                   SET label = ?, description = ?, kind = ?
-                   WHERE id = ?""",
-                (mp.label, mp.description, mp.kind, mp.id)
-            )
+            conn.execute(f"UPDATE meeting_points SET {set_clause} WHERE id = ?", values)
 
     def remove_meeting_point(self, mp_id: int) -> None:
         with transaction(self.db_path) as conn:

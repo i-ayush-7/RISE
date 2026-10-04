@@ -6,3 +6,8 @@ __pycache__/
 
 data/
 
+
+*.db
+__pycache__/
+*.pyc
+
