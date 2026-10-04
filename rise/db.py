@@ -84,3 +84,29 @@ def init_db(db_path: Path = DEFAULT_DB_PATH):
         """)
         
         conn.execute("CREATE INDEX IF NOT EXISTS idx_meeting_points_household_id ON meeting_points(household_id)")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+                started_at TEXT NOT NULL,
+                closed_at TEXT,
+                status TEXT NOT NULL CHECK(status IN ('active', 'closed')),
+                reason TEXT
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_incident ON incidents(household_id) WHERE status = 'active'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_incidents_household_id ON incidents(household_id)")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS checkins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id INTEGER NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+                member_id INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+                status TEXT NOT NULL CHECK(status IN ('pending', 'safe', 'needs_help', 'not_responding')),
+                note TEXT,
+                updated_at TEXT NOT NULL,
+                UNIQUE(incident_id, member_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_checkins_incident_id ON checkins(incident_id)")

@@ -329,3 +329,42 @@ def get_safety_advice(household_id: Optional[int] = None) -> Dict[str, Any]:
     result["source"] = provider.name
     result["retrieved_at"] = getattr(provider, "retrieved_at", "")
     return result
+
+def _now():
+    import datetime
+    return datetime.datetime.now(datetime.timezone.utc)
+
+@_convert_error
+def start_checkin(reason: Optional[str] = None, household_id: Optional[int] = None):
+    hid = resolve_household_id(get_repo(), household_id)
+    from rise.checkins import start_incident
+    start_incident(get_repo().db_path, hid, reason, _now())
+    return {"status": "started"}
+
+@_convert_error
+def record_checkin(member_name: str, status: str, note: Optional[str] = None, household_id: Optional[int] = None):
+    hid = resolve_household_id(get_repo(), household_id)
+    from rise.checkins import record_checkin as rc
+    rc(get_repo().db_path, hid, member_name, status, note, _now())
+    return {"status": "recorded"}
+
+@_convert_error
+def get_checkin_status(household_id: Optional[int] = None):
+    hid = resolve_household_id(get_repo(), household_id)
+    from rise.checkins import get_incident_state
+    from rise.escalation import build_escalation
+    state = get_incident_state(get_repo().db_path, hid)
+    if not state:
+        raise ValueError("No check-in is active.")
+    plan = get_household_plan(hid)
+    res = build_escalation(plan, state, _now())
+    res["incident_id"] = state["incident_id"]
+    res["started_at"] = state["started_at"]
+    return res
+
+@_convert_error
+def close_checkin(household_id: Optional[int] = None):
+    hid = resolve_household_id(get_repo(), household_id)
+    from rise.checkins import close_incident
+    close_incident(get_repo().db_path, hid, _now())
+    return {"status": "closed"}

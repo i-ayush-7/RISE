@@ -95,3 +95,16 @@ $env:RISE_NWS_POINT="30.7,-86.5"
 # Mac/Linux
 RISE_ALERT_SOURCE=nws RISE_NWS_POINT=30.7,-86.5 ./venv/bin/python server.py
 ```
+
+## Check-in and Escalation
+
+RISE includes check-in tools (start_checkin, ecord_checkin, get_checkin_status, close_checkin) to help a household account for its members during an emergency.
+
+**Note**: R.I.S.E. never contacts anyone automatically. The tools create a local tracking record and provide advice on who to contact next. If anyone is in immediate danger, call your local emergency number.
+
+Escalation thresholds are based on elapsed time:
+- < 5 minutes: Level 0 (ask to confirm safe)
+- 5-9 minutes: Level 1 (call directly)
+- 10-19 minutes: Level 2 (escalate to priority 1 contact)
+- >= 20 minutes: Level 3 (escalate to priority 2 contact and advise local emergency services)
+

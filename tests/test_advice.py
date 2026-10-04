@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 import os
 from pathlib import Path
 from unittest.mock import patch

@@ -475,7 +475,8 @@ class TestNWS(unittest.TestCase):
         provider = RecordedAlertProvider("sample")
         alerts = provider.get_alerts()
         self.assertTrue(len(alerts) > 0)
-        print("SAMPLE EVENTS:", [a.headline for a in alerts])
+        for alert in alerts:
+            self.assertTrue(bool(alert.headline))
 
 if __name__ == "__main__":
     unittest.main()
