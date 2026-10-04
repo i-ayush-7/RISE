@@ -95,7 +95,7 @@ class TestDatabase(unittest.TestCase):
         self.repo.add_member(m)
         
         with self.assertRaises(ValueError):
-            self.repo.update_member(m.id, {"id": 9999, "name": "Johnny"})
+            self.repo.update_member(m.id, h.id, {"id": 9999, "name": "Johnny"})
 
     def test_update_empty_dict_raises_value_error(self):
         h = self.repo.create_household("Test Family")
@@ -103,7 +103,7 @@ class TestDatabase(unittest.TestCase):
         self.repo.add_member(m)
         
         with self.assertRaises(ValueError):
-            self.repo.update_member(m.id, {})
+            self.repo.update_member(m.id, h.id, {})
             
     def test_sql_injection_attempt_stored_as_text(self):
         h = self.repo.create_household("Test Family")
@@ -134,8 +134,9 @@ class TestDatabase(unittest.TestCase):
             self.repo.add_member(m)
 
     def test_update_missing_member_raises_lookuperror(self):
+        h = self.repo.create_household("Test Family")
         with self.assertRaises(LookupError):
-            self.repo.update_member(9999, {"name": "Ghost"})
+            self.repo.update_member(9999, h.id, {"name": "Ghost"})
 
     def test_remove_missing_member_raises_lookuperror(self):
         with self.assertRaises(LookupError):

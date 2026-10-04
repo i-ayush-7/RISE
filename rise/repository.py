@@ -37,7 +37,7 @@ class Repository:
             cursor = conn.execute("SELECT * FROM members WHERE household_id = ?", (household_id,))
             return [Member(**dict(row)) for row in cursor.fetchall()]
 
-    def update_member(self, member_id: int, updates: Dict[str, Any]) -> None:
+    def update_member(self, member_id: int, household_id: int, updates: Dict[str, Any]) -> None:
         allowlist = {'name', 'age_group', 'support_level', 'mobility_needs', 'medical_needs', 'notes', 'is_pet'}
         if not updates:
             raise ValueError("Updates dictionary cannot be empty")
@@ -47,10 +47,10 @@ class Repository:
                 
         set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
         values = list(updates.values())
-        values.append(member_id)
+        values.extend([member_id, household_id])
         
         with transaction(self.db_path) as conn:
-            cursor = conn.execute(f"UPDATE members SET {set_clause} WHERE id = ?", values)
+            cursor = conn.execute(f"UPDATE members SET {set_clause} WHERE id = ? AND household_id = ?", values)
             if cursor.rowcount == 0:
                 raise LookupError("Not found")
 
@@ -74,7 +74,7 @@ class Repository:
             cursor = conn.execute("SELECT * FROM contacts WHERE household_id = ?", (household_id,))
             return [Contact(**dict(row)) for row in cursor.fetchall()]
 
-    def update_contact(self, contact_id: int, updates: Dict[str, Any]) -> None:
+    def update_contact(self, contact_id: int, household_id: int, updates: Dict[str, Any]) -> None:
         allowlist = {'name', 'relationship', 'phone', 'priority'}
         if not updates:
             raise ValueError("Updates dictionary cannot be empty")
@@ -84,10 +84,10 @@ class Repository:
                 
         set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
         values = list(updates.values())
-        values.append(contact_id)
+        values.extend([contact_id, household_id])
         
         with transaction(self.db_path) as conn:
-            cursor = conn.execute(f"UPDATE contacts SET {set_clause} WHERE id = ?", values)
+            cursor = conn.execute(f"UPDATE contacts SET {set_clause} WHERE id = ? AND household_id = ?", values)
             if cursor.rowcount == 0:
                 raise LookupError("Not found")
 
@@ -111,7 +111,7 @@ class Repository:
             cursor = conn.execute("SELECT * FROM meeting_points WHERE household_id = ?", (household_id,))
             return [MeetingPoint(**dict(row)) for row in cursor.fetchall()]
 
-    def update_meeting_point(self, mp_id: int, updates: Dict[str, Any]) -> None:
+    def update_meeting_point(self, mp_id: int, household_id: int, updates: Dict[str, Any]) -> None:
         allowlist = {'label', 'description', 'kind'}
         if not updates:
             raise ValueError("Updates dictionary cannot be empty")
@@ -121,10 +121,10 @@ class Repository:
                 
         set_clause = ", ".join([f"{k} = ?" for k in updates.keys()])
         values = list(updates.values())
-        values.append(mp_id)
+        values.extend([mp_id, household_id])
         
         with transaction(self.db_path) as conn:
-            cursor = conn.execute(f"UPDATE meeting_points SET {set_clause} WHERE id = ?", values)
+            cursor = conn.execute(f"UPDATE meeting_points SET {set_clause} WHERE id = ? AND household_id = ?", values)
             if cursor.rowcount == 0:
                 raise LookupError("Not found")
 

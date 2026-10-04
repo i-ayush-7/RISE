@@ -18,13 +18,27 @@ async def run_client():
             for tool in tools.tools:
                 print(f"- {tool.name}: {tool.description}")
             
-            print("\nCalling tool_get_household_plan...")
-            plan = await session.call_tool("tool_get_household_plan", {})
-            print(plan.content[0].text)
+            print("\nCalling get_household_plan...")
+            plan = await session.call_tool("get_household_plan", {})
+            for block in plan.content:
+                print(block.text)
 
-            print("\nCalling tool_list_people_needing_help...")
-            help_list = await session.call_tool("tool_list_people_needing_help", {})
-            print(help_list.content[0].text)
+            print("\nCalling list_people_needing_help...")
+            help_list = await session.call_tool("list_people_needing_help", {})
+            for block in help_list.content:
+                print(block.text)
+
+            print("\nCalling add_member with invalid age_group...")
+            try:
+                invalid_member = await session.call_tool("add_member", {
+                    "name": "Invalid Member",
+                    "age_group": "ghost",
+                    "support_level": "independent"
+                })
+                for block in invalid_member.content:
+                    print(block.text)
+            except Exception as e:
+                print(f"Error from server: {e}")
 
 if __name__ == "__main__":
     asyncio.run(run_client())

@@ -8,21 +8,38 @@ from rise.tools import (
     add_meeting_point, update_meeting_point, list_households, get_repo
 )
 import os
+import rise.tools
 
 class TestTools(unittest.TestCase):
     def setUp(self):
-        self.db_path = Path("tests/test_tools_rise.db")
+        self.db_path = Path(__file__).parent / "test_tools_rise.db"
         if self.db_path.exists():
             self.db_path.unlink()
         
         # Override RISE_DB_PATH for tests
+        self.old_env = os.environ.get("RISE_DB_PATH")
         os.environ["RISE_DB_PATH"] = str(self.db_path)
+        
+        # Ensure it's restored after each test
+        def restore_env():
+            if self.old_env is None:
+                del os.environ["RISE_DB_PATH"]
+            else:
+                os.environ["RISE_DB_PATH"] = self.old_env
+        self.addCleanup(restore_env)
+        
         init_db(self.db_path)
         self.repo = get_repo()
         
     def tearDown(self):
         if self.db_path.exists():
             self.db_path.unlink()
+
+    def test_no_remove_delete_functions(self):
+        for name in dir(rise.tools):
+            if callable(getattr(rise.tools, name)):
+                self.assertFalse(name.startswith("remove"), f"Found function {name} starting with remove")
+                self.assertFalse(name.startswith("delete"), f"Found function {name} starting with delete")
 
     def test_resolve_household_id_zero(self):
         with self.assertRaises(ValueError) as ctx:
@@ -53,62 +70,170 @@ class TestTools(unittest.TestCase):
     def test_get_household_plan(self):
         h = self.repo.create_household("Test Fam")
         add_member("John", "adult", "independent")
-        add_member("Rover", "pet", "dependent", is_pet=1)
+        add_member("Rover", "pet", "dependent")
         add_member("Gramps", "senior", "needs_assistance")
         
         plan = get_household_plan()
-        self.assertIn("Test Fam: 3 members including 1 pet. 2 persons needs assistance.", plan["summary"])
+        self.assertEqual("Test Fam: 2 members including 1 pet. 1 person needs assistance.", plan["summary"])
+        self.assertEqual(len(plan["pets"]), 1)
+        self.assertEqual(plan["pets"][0]["name"], "Rover")
         
     def test_get_household_plan_no_help_needed(self):
         h = self.repo.create_household("Test Fam")
         add_member("John", "adult", "independent")
         plan = get_household_plan()
-        self.assertIn("Everyone is independent.", plan["summary"])
+        self.assertEqual("Test Fam: 1 member. Everyone is independent.", plan["summary"])
+        
+    def test_get_household_plan_plural_people_needing_help(self):
+        h = self.repo.create_household("The Rivera Family")
+        add_member("A", "adult", "needs_assistance")
+        add_member("B", "adult", "dependent")
+        add_member("Rover", "pet", "dependent")
+        plan = get_household_plan()
+        self.assertEqual("The Rivera Family: 2 members including 1 pet. 2 people need assistance.", plan["summary"])
 
     def test_list_people_needing_help(self):
         h = self.repo.create_household("Test Fam")
         add_member("John", "adult", "independent")
         add_member("Gramps", "senior", "needs_assistance")
         add_member("Jane", "adult", "independent", mobility_needs="crutches")
+        add_member("Rover", "pet", "dependent")  # Should be excluded
         
         needs_help = list_people_needing_help()
         self.assertEqual(len(needs_help), 2)
+        names = [n["name"] for n in needs_help]
+        self.assertIn("Gramps", names)
+        self.assertIn("Jane", names)
+        self.assertNotIn("Rover", names)
         
-    def test_validation_empty_string(self):
+    def test_name_too_long(self):
+        self.repo.create_household("Fam")
+        long_name = "A" * 201
+        with self.assertRaises(ValueError) as ctx:
+            add_member(long_name, "adult", "independent")
+        self.assertIn("must not exceed 200 characters", str(ctx.exception))
+        
+    def test_notes_too_long(self):
+        self.repo.create_household("Fam")
+        long_notes = "A" * 1001
+        with self.assertRaises(ValueError) as ctx:
+            add_member("John", "adult", "independent", notes=long_notes)
+        self.assertIn("must not exceed 1000 characters", str(ctx.exception))
+        
+    def test_mobility_needs_too_long(self):
+        self.repo.create_household("Fam")
+        long_needs = "A" * 1001
+        with self.assertRaises(ValueError) as ctx:
+            add_member("John", "adult", "independent", mobility_needs=long_needs)
+        self.assertIn("must not exceed 1000 characters", str(ctx.exception))
+
+    def test_bad_phone(self):
         self.repo.create_household("Fam")
         with self.assertRaises(ValueError) as ctx:
-            add_member("", "adult", "independent")
-        self.assertIn("name must be a non-empty string", str(ctx.exception))
+            add_contact("Doc", "abcd")
+        self.assertIn("invalid characters", str(ctx.exception))
         
-    def test_validation_enum(self):
+    def test_bad_priority_zero(self):
         self.repo.create_household("Fam")
         with self.assertRaises(ValueError) as ctx:
-            add_member("John", "alien", "independent")
-        self.assertIn("age_group must be one of", str(ctx.exception))
+            add_contact("Doc", "555-1234", priority=0)
+        self.assertIn("priority must be >= 1", str(ctx.exception))
+        
+    def test_bad_priority_bool(self):
+        self.repo.create_household("Fam")
+        with self.assertRaises(ValueError) as ctx:
+            add_contact("Doc", "555-1234", priority=True)
+        self.assertIn("priority must be an integer", str(ctx.exception))
+        
+    def test_bad_priority_string(self):
+        self.repo.create_household("Fam")
+        with self.assertRaises(ValueError) as ctx:
+            add_contact("Doc", "555-1234", priority="high")
+        self.assertIn("priority must be an integer", str(ctx.exception))
+        
+    def test_invalid_meeting_point_kind(self):
+        self.repo.create_household("Fam")
+        with self.assertRaises(ValueError) as ctx:
+            add_meeting_point("Park", "secondary")
+        self.assertIn("kind must be one of", str(ctx.exception))
+        
+    def test_pet_age_group_derivation(self):
+        self.repo.create_household("Fam")
+        m = add_member("Rover", "pet", "dependent")
+        self.assertEqual(m["is_pet"], 1)
+        m2 = add_member("John", "adult", "independent")
+        self.assertEqual(m2["is_pet"], 0)
+        
+    def test_update_age_group_to_pet_sets_is_pet(self):
+        self.repo.create_household("Fam")
+        m = add_member("Alien", "adult", "independent")
+        self.assertEqual(m["is_pet"], 0)
+        update_member(m["id"], age_group="pet")
+        plan = get_household_plan()
+        self.assertEqual(plan["pets"][0]["id"], m["id"])
+        
+    def test_update_age_group_away_from_pet_clears_is_pet(self):
+        self.repo.create_household("Fam")
+        m = add_member("Rover", "pet", "dependent")
+        self.assertEqual(m["is_pet"], 1)
+        update_member(m["id"], age_group="adult")
+        plan = get_household_plan()
+        self.assertEqual(len(plan["pets"]), 0)
+        
+    def test_nothing_to_update(self):
+        self.repo.create_household("Fam")
+        m = add_member("John", "adult", "independent")
+        with self.assertRaises(ValueError) as ctx:
+            update_member(m["id"])
+        self.assertIn("Nothing to update", str(ctx.exception))
 
     def test_update_member_lookuperror_translation(self):
         self.repo.create_household("Fam")
         with self.assertRaises(ValueError) as ctx:
-            update_member(999, {"name": "Ghost"})
+            update_member(999, name="Ghost")
         self.assertIn("Record not found", str(ctx.exception))
 
-    def test_add_contact_and_update(self):
-        self.repo.create_household("Fam")
-        c = add_contact("Dr", "555-0100")
-        self.assertEqual(c["name"], "Dr")
+    def test_scoping_update_member(self):
+        h1 = self.repo.create_household("Fam 1")
+        h2 = self.repo.create_household("Fam 2")
+        m1 = add_member("John", "adult", "independent", household_id=h1.id)
         
-        update_contact(c["id"], {"priority": 2})
-        plan = get_household_plan()
-        self.assertEqual(plan["contacts"][0]["priority"], 2)
-
-    def test_add_meeting_point_and_update(self):
-        self.repo.create_household("Fam")
-        mp = add_meeting_point("Park", "primary")
-        self.assertEqual(mp["label"], "Park")
+        with self.assertRaises(ValueError) as ctx:
+            update_member(m1["id"], name="Johnny", household_id=h2.id)
+        self.assertIn("Record not found", str(ctx.exception))
         
-        update_meeting_point(mp["id"], {"kind": "backup"})
-        plan = get_household_plan()
-        self.assertEqual(plan["meeting_points"][0]["kind"], "backup")
+    def test_scoping_update_contact(self):
+        h1 = self.repo.create_household("Fam 1")
+        h2 = self.repo.create_household("Fam 2")
+        c1 = add_contact("Dr", "555", household_id=h1.id)
+        
+        with self.assertRaises(ValueError) as ctx:
+            update_contact(c1["id"], name="Doctor", household_id=h2.id)
+        self.assertIn("Record not found", str(ctx.exception))
+        
+    def test_scoping_update_meeting_point(self):
+        h1 = self.repo.create_household("Fam 1")
+        h2 = self.repo.create_household("Fam 2")
+        mp1 = add_meeting_point("Park", "primary", household_id=h1.id)
+        
+        with self.assertRaises(ValueError) as ctx:
+            update_meeting_point(mp1["id"], label="Lake", household_id=h2.id)
+        self.assertIn("Record not found", str(ctx.exception))
+        
+    def test_error_message_leakage(self):
+        from rise.tools import _convert_error
+        import sqlite3
+        
+        @_convert_error
+        def fake_db_func():
+            raise sqlite3.IntegrityError("CHECK constraint failed: members")
+            
+        with self.assertRaises(ValueError) as ctx:
+            fake_db_func()
+            
+        err = str(ctx.exception).lower()
+        for forbidden in ["select", "insert", "update", "sqlite", "check"]:
+            self.assertNotIn(forbidden, err)
 
 if __name__ == "__main__":
     unittest.main()
