@@ -138,6 +138,21 @@ class TestAdvice(unittest.TestCase):
         res = build_advice(plan, alerts, False)
         self.assertTrue(any("Keep phones charged and watch for updates" in a["action"] for a in res["actions"]))
 
+    def test_other_hazard(self):
+        plan = {"name": "Fam", "members": []}
+        alerts = [Alert("1", "other", "warning", "H1", "A", "20", "S", instructions="Do something")]
+        res = build_advice(plan, alerts, False)
+        actions = res["actions"]
+        self.assertEqual(actions[0]["action"], "Read and follow the official instructions in this alert")
+        self.assertFalse(any("Stay indoors" in a["action"] for a in actions))
+        
+    def test_other_hazard_no_instructions(self):
+        plan = {"name": "Fam", "members": []}
+        alerts = [Alert("1", "other", "warning", "H1", "A", "20", "S")]
+        res = build_advice(plan, alerts, False)
+        actions = res["actions"]
+        self.assertEqual(actions[0]["action"], "Check weather.gov or your local authorities for what to do")
+
     def test_flood_warning_heat_warning(self):
         plan = {"name": "Fam", "members": [{"name": "Gramps", "age_group": "senior", "is_pet": 0, "support_level": "independent"}]}
         alerts = [
@@ -190,7 +205,28 @@ class TestAdvice(unittest.TestCase):
         self.assertTrue(any("Call Doc first" in a["action"] for a in actions))
         self.assertTrue(any("Head to the primary meeting point" in a["action"] for a in actions))
 
-    def test_earthquake_in_evac_mode(self):
+    def test_headline_prefixes(self):
+        plan = {"name": "Fam", "members": []}
+        alerts = [Alert("1", "storm", "warning", "H1", "A", "20", "S")]
+        
+        # simulated
+        res = build_advice(plan, alerts, True, data_mode="simulated")
+        self.assertTrue(res["headline"].startswith("This is a simulated alert. "))
+        
+        # recorded
+        res = build_advice(plan, alerts, False, data_mode="recorded")
+        self.assertTrue(res["headline"].startswith("This is a replay of a past alert, not a live warning. "))
+        
+        # live
+        res = build_advice(plan, alerts, False, data_mode="live")
+        self.assertFalse(res["headline"].startswith("This is a "))
+        
+        # default
+        res = build_advice(plan, alerts, False) # defaults to simulated because is_simulated=False? Wait, the logic is: data_mode = "simulated" if is_simulated else "live"
+        self.assertFalse(res["headline"].startswith("This is a "))
+        
+        res_sim = build_advice(plan, alerts, True)
+        self.assertTrue(res_sim["headline"].startswith("This is a simulated alert. "))
         plan = {
             "name": "Fam",
             "members": [{"name": "A", "is_pet": 0, "support_level": "independent"}]

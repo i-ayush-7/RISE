@@ -2,17 +2,37 @@ import json
 import logging
 import time
 import urllib.request
+import socket
+import datetime
 from typing import List, Optional, Callable, Dict, Any
 from urllib.error import URLError, HTTPError
 from rise.alerts import Alert, AlertProvider
 import hashlib
 import re
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
 class AlertServiceUnavailable(Exception):
     """Raised when the NWS service cannot be reached or returns invalid data."""
     pass
+
+_CACHE = {}
+
+def clear_cache():
+    _CACHE.clear()
+
+def parse_time(s: str) -> Optional[datetime.datetime]:
+    if not s:
+        return None
+    try:
+        s = s.replace("Z", "+00:00")
+        dt = datetime.datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        return dt
+    except Exception:
+        return None
 
 def fetch_json(url: str, headers: Dict[str, str], timeout: int = 8) -> Dict[str, Any]:
     req = urllib.request.Request(url, headers=headers)
@@ -28,11 +48,14 @@ def fetch_json(url: str, headers: Dict[str, str], timeout: int = 8) -> Dict[str,
             return json.loads(raw.decode("utf-8"))
     except HTTPError as e:
         if e.code in (400, 404):
-            # Pass exactly this for location errors
             raise ValueError("That location is not covered by the National Weather Service.")
         raise AlertServiceUnavailable(f"HTTP Error: {e.code}")
     except URLError as e:
+        if isinstance(e.reason, socket.timeout):
+            raise AlertServiceUnavailable("Connection Error: timeout")
         raise AlertServiceUnavailable(f"Connection Error: {e.reason}")
+    except socket.timeout:
+        raise AlertServiceUnavailable("Connection Error: timeout")
     except json.JSONDecodeError as e:
         raise AlertServiceUnavailable(f"Invalid JSON: {e}")
     except Exception as e:
@@ -43,14 +66,23 @@ def fetch_json(url: str, headers: Dict[str, str], timeout: int = 8) -> Dict[str,
 def sanitize(text: Optional[str], max_length: int = 300) -> Optional[str]:
     if not text:
         return None
-    # Remove control characters but keep newlines as spaces
-    text = re.sub(r'[\r\n]+', ' ', text)
-    text = re.sub(r'[^\x20-\x7E]', '', text)
-    # Collapse whitespace
+    chars = []
+    for c in text:
+        cat = unicodedata.category(c)
+        if c in ('\n', '\r', '\t'):
+            chars.append(' ')
+        elif cat == 'Cc':
+            continue
+        elif cat == 'Cf':
+            continue
+        else:
+            chars.append(c)
+            
+    text = "".join(chars)
     text = re.sub(r'\s+', ' ', text).strip()
     return text[:max_length]
 
-def parse_nws_features(payload: Dict[str, Any], now: str) -> List[Alert]:
+def parse_nws_features(payload: Dict[str, Any], now: datetime.datetime) -> List[Alert]:
     alerts = []
     features = payload.get("features", [])
     if not isinstance(features, list):
@@ -71,14 +103,23 @@ def parse_nws_features(payload: Dict[str, Any], now: str) -> List[Alert]:
             if msg_type == "Cancel":
                 continue
                 
-            ends = props.get("ends") or props.get("expires")
-            if ends and ends < now:
-                continue
+            end_str = props.get("ends") or props.get("expires")
+            if end_str:
+                end_dt = parse_time(end_str)
+                if end_dt is not None:
+                    if end_dt <= now:
+                        continue
+                else:
+                    logger.warning(f"Unparseable end time: {end_str}, keeping alert.")
                 
             event = props.get("event", "Unknown Event")
             event_lower = event.lower()
             
-            if "flood" in event_lower:
+            if "tsunami" in event_lower:
+                hazard = "other"
+            elif "evacuation" in event_lower or "shelter in place" in event_lower:
+                hazard = "other"
+            elif "flood" in event_lower:
                 hazard = "flood"
             elif any(w in event_lower for w in ["hurricane", "tropical storm", "typhoon"]):
                 hazard = "cyclone"
@@ -95,14 +136,19 @@ def parse_nws_features(payload: Dict[str, Any], now: str) -> List[Alert]:
             else:
                 hazard = "other"
                 
-            if "Emergency" in event:
-                severity = "emergency"
-            elif event.endswith("Warning"):
+            if "tsunami" in event_lower or "evacuation" in event_lower or "shelter in place" in event_lower:
                 severity = "warning"
-            elif event.endswith("Watch"):
-                severity = "watch"
+                if "Emergency" in event:
+                    severity = "emergency"
             else:
-                severity = "advisory"
+                if "Emergency" in event:
+                    severity = "emergency"
+                elif event.endswith("Warning"):
+                    severity = "warning"
+                elif event.endswith("Watch"):
+                    severity = "watch"
+                else:
+                    severity = "advisory"
                 
             id_val = props.get("id")
             sent = props.get("sent", "")
@@ -127,7 +173,7 @@ def parse_nws_features(payload: Dict[str, Any], now: str) -> List[Alert]:
                 issued_at=str(sent),
                 source=source,
                 instructions=instructions,
-                expires_at=ends
+                expires_at=end_str
             ))
             
         except Exception as e:
@@ -136,12 +182,12 @@ def parse_nws_features(payload: Dict[str, Any], now: str) -> List[Alert]:
     return alerts
 
 class NWSAlertProvider(AlertProvider):
-    def __init__(self, point: str, fetcher: Callable = fetch_json, clock: Callable = time.time):
+    def __init__(self, point: str, fetcher: Optional[Callable] = None, clock: Optional[Callable] = None):
         self.name = "nws"
         self.data_mode = "live"
         self.is_simulated = False
-        self.fetcher = fetcher
-        self.clock = clock
+        self.fetcher = fetcher or fetch_json
+        self.clock = clock or time.time
         
         try:
             parts = point.split(",")
@@ -155,14 +201,17 @@ class NWSAlertProvider(AlertProvider):
             self.lon = lon
         except ValueError:
             raise ValueError("Invalid NWS point. Must be lat,lon in valid ranges.")
-            
-        self._cache = None
-        self._cache_time = 0
 
     def get_alerts(self) -> List[Alert]:
-        now = self.clock()
-        if self._cache is not None and (now - self._cache_time) < 60:
-            return self._cache
+        now_ts = self.clock()
+        now_dt = datetime.datetime.fromtimestamp(now_ts, datetime.timezone.utc)
+        
+        cache_key = (self.lat, self.lon)
+        if cache_key in _CACHE:
+            entry = _CACHE[cache_key]
+            if now_ts - entry["time"] < 60:
+                self.retrieved_at = entry["retrieved_at"]
+                return entry["alerts"]
             
         import os
         contact = os.environ.get("RISE_CONTACT", "no-contact-set")
@@ -182,17 +231,18 @@ class NWSAlertProvider(AlertProvider):
             logger.error(f"Failed to fetch NWS alerts: {e}")
             raise AlertServiceUnavailable("The live alert service could not be reached. Do not assume there are no active alerts. Check weather.gov or your local authorities.")
             
-        import datetime
-        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        alerts = parse_nws_features(payload, now_iso)
+        now_iso = now_dt.isoformat()
+        alerts = parse_nws_features(payload, now_dt)
         
-        # Attach retrieved_at
         for a in alerts:
             a.retrieved_at = now_iso
             
         self.retrieved_at = now_iso
-        self._cache = alerts
-        self._cache_time = now
+        _CACHE[cache_key] = {
+            "time": now_ts,
+            "retrieved_at": now_iso,
+            "alerts": alerts
+        }
         return alerts
 
 class RecordedAlertProvider(AlertProvider):
@@ -200,6 +250,7 @@ class RecordedAlertProvider(AlertProvider):
         self.name = "nws_recorded"
         self.data_mode = "recorded"
         self.is_simulated = False
+        import re
         if not re.match(r'^[a-z0-9_]+$', recording_name):
             raise ValueError("Invalid recording name")
             
@@ -214,9 +265,13 @@ class RecordedAlertProvider(AlertProvider):
         with open(self.filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
             
-        recorded_at = data.get("recorded_at", "")
+        recorded_at_str = data.get("recorded_at", "")
+        recorded_at_dt = parse_time(recorded_at_str)
+        if recorded_at_dt is None:
+            raise ValueError("Recording is invalid: bad recorded_at")
+            
         payload = data.get("payload", {})
         
-        alerts = parse_nws_features(payload, recorded_at)
-        self.retrieved_at = recorded_at
+        alerts = parse_nws_features(payload, recorded_at_dt)
+        self.retrieved_at = recorded_at_str
         return alerts
