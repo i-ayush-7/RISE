@@ -68,9 +68,27 @@ python -m rise.seed
 
 This server exposes several tools for any MCP-compliant client (like Claude Desktop) to plan and manage households:
 
-- `tool_list_households`: Lists all registered households.
-- `tool_get_household_plan`: Retrieves the full plan (members, contacts, meeting points).
-- `tool_list_people_needing_help`: Lists members with mobility/medical needs or who require assistance.
-- `tool_add_member` / `tool_update_member`: Manage household members.
-- `tool_add_contact` / `tool_update_contact`: Manage emergency contacts.
-- `tool_add_meeting_point` / `tool_update_meeting_point`: Manage rally points.
+- `list_households`: Lists all registered households.
+- `get_household_plan`: Retrieves the full plan (members, contacts, meeting points).
+- `list_people_needing_help`: Lists members with mobility/medical needs or who require assistance.
+- `add_member` / `update_member`: Manage household members.
+- `add_contact` / `update_contact`: Manage emergency contacts.
+- `add_meeting_point` / `update_meeting_point`: Manage rally points.
+- `get_active_alerts`: Retrieve active alerts for the household area.
+- `get_safety_advice`: Get tailored safety instructions and actions based on alerts and the household's unique needs.
+
+## Configuration
+You can set the following environment variables:
+- `RISE_DB_PATH`: Override the default database path.
+- `RISE_ALERT_SOURCE`: The source of alerts (default: `fixture`).
+- `RISE_FIXTURE_SCENARIO`: The active scenario for simulated alerts. Valid values: `flood_warning`, `heatwave_warning`, `none` (default: `flood_warning`).
+
+Example with environment variables:
+```bash
+# Windows PowerShell
+$env:RISE_FIXTURE_SCENARIO="heatwave_warning"
+.\venv\Scripts\python.exe server.py
+
+# Mac/Linux
+RISE_FIXTURE_SCENARIO=heatwave_warning ./venv/bin/python server.py
+```

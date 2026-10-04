@@ -1,0 +1,13 @@
+[
+  {
+    "id": "sim-heat-1",
+    "hazard": "heat",
+    "severity": "warning",
+    "headline": "SIMULATED: Extreme Heat Warning",
+    "instructions": "Stay indoors in air conditioning. Drink plenty of water. Check on vulnerable neighbors.",
+    "area_description": "Entire Metro Region",
+    "issued_at": "2026-10-04T08:00:00Z",
+    "expires_at": "2026-10-07T20:00:00Z",
+    "source": "Local Weather Service"
+  }
+]

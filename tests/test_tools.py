@@ -279,6 +279,40 @@ class TestTools(unittest.TestCase):
         self.assertIsNone(con["relationship"])
         self.assertIsNone(pt["description"])
         
+    def test_invalid_age_group_msg(self):
+        self.repo.create_household("Fam")
+        with self.assertRaises(ToolError) as ctx:
+            add_member("Ghost", "ghost", "independent")
+        self.assertEqual("age_group must be one of: adult, child, pet, senior", str(ctx.exception))
+
+    def test_update_contact_invalid_phone(self):
+        self.repo.create_household("Fam")
+        c = add_contact("Dr", "555")
+        with self.assertRaises(ToolError) as ctx:
+            update_contact(c["id"], phone="!@#")
+        self.assertEqual("phone contains invalid characters", str(ctx.exception))
+
+    def test_update_contact_priority_zero(self):
+        self.repo.create_household("Fam")
+        c = add_contact("Dr", "555")
+        with self.assertRaises(ToolError) as ctx:
+            update_contact(c["id"], priority=0)
+        self.assertEqual("priority must be >= 1", str(ctx.exception))
+
+    def test_update_meeting_point_invalid_kind(self):
+        self.repo.create_household("Fam")
+        mp = add_meeting_point("Park", "primary")
+        with self.assertRaises(ToolError) as ctx:
+            update_meeting_point(mp["id"], kind="galaxy")
+        self.assertEqual("kind must be one of: backup, out_of_area, primary", str(ctx.exception))
+
+    def test_update_member_invalid_support_level(self):
+        self.repo.create_household("Fam")
+        m = add_member("John", "adult", "independent")
+        with self.assertRaises(ToolError) as ctx:
+            update_member(m["id"], support_level="superhero")
+        self.assertEqual("support_level must be one of: dependent, independent, needs_assistance", str(ctx.exception))
+
     def test_error_message_leakage(self):
         from rise.tools import _convert_error
         import sqlite3

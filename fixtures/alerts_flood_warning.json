@@ -1,0 +1,24 @@
+[
+  {
+    "id": "sim-flood-1",
+    "hazard": "flood",
+    "severity": "warning",
+    "headline": "SIMULATED: Major Flood Warning for Springfield Area",
+    "instructions": "Evacuate immediately to higher ground. Do not drive through flooded roads.",
+    "area_description": "Springfield and surrounding valley",
+    "issued_at": "2026-10-04T12:00:00Z",
+    "expires_at": "2026-10-05T12:00:00Z",
+    "source": "Local Emergency Management"
+  },
+  {
+    "id": "sim-storm-1",
+    "hazard": "storm",
+    "severity": "watch",
+    "headline": "SIMULATED: Severe Thunderstorm Watch",
+    "instructions": "Be prepared for severe weather. Secure outdoor loose items.",
+    "area_description": "Springfield County",
+    "issued_at": "2026-10-04T12:00:00Z",
+    "expires_at": "2026-10-04T18:00:00Z",
+    "source": "Local Weather Service"
+  }
+]

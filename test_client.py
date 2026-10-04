@@ -23,6 +23,16 @@ async def run_client():
             for block in plan.content:
                 print(block.text)
 
+            print("\nCalling get_active_alerts...")
+            alerts = await session.call_tool("get_active_alerts", {})
+            for block in alerts.content:
+                print(block.text)
+
+            print("\nCalling get_safety_advice...")
+            advice = await session.call_tool("get_safety_advice", {})
+            for block in advice.content:
+                print(block.text)
+
             print("\nCalling list_people_needing_help...")
             help_list = await session.call_tool("list_people_needing_help", {})
             for block in help_list.content:

@@ -67,7 +67,7 @@ def validate_string(s: Any, name: str, max_length: int = 200, required: bool = T
 
 def validate_enum(val: Any, name: str, allowed: set) -> str:
     if val not in allowed:
-        raise ValueError(f"{name} must be one of: {', '.join(allowed)}")
+        raise ValueError(f"{name} must be one of: {', '.join(sorted(allowed))}")
     return val
     
 def validate_phone(phone: Any) -> str:
@@ -281,3 +281,28 @@ def update_meeting_point(mp_id: int, label: Optional[str] = None, kind: Optional
         
     repo.update_meeting_point(mp_id, hid, updates)
     return {"status": "success"}
+
+@_convert_error
+def get_active_alerts(household_id: Optional[int] = None) -> Dict[str, Any]:
+    repo = get_repo()
+    hid = resolve_household_id(repo, household_id)  # validate household exists
+    from rise.alerts import get_provider
+    provider = get_provider()
+    alerts = provider.get_alerts()
+    return {
+        "source": provider.name,
+        "is_simulated": provider.is_simulated,
+        "alerts": [a.__dict__ for a in alerts]
+    }
+
+@_convert_error
+def get_safety_advice(household_id: Optional[int] = None) -> Dict[str, Any]:
+    repo = get_repo()
+    hid = resolve_household_id(repo, household_id)
+    plan = get_household_plan(hid)
+    from rise.alerts import get_provider
+    provider = get_provider()
+    alerts = provider.get_alerts()
+    
+    from rise.advice import build_advice
+    return build_advice(plan, alerts, provider.is_simulated)

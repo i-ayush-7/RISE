@@ -12,7 +12,9 @@ from rise.tools import (
     add_contact,
     update_contact,
     add_meeting_point,
-    update_meeting_point
+    update_meeting_point,
+    get_active_alerts,
+    get_safety_advice
 )
 
 server = MCPServer("rise")
@@ -56,6 +58,14 @@ def tool_add_meeting_point(label: str, kind: str, description: Optional[str] = N
 @server.tool(name="update_meeting_point", description="Update an existing meeting point. Provide only the fields you wish to change. Set a text field to an empty string to clear it. mp_id must be retrieved from get_household_plan.")
 def tool_update_meeting_point(mp_id: int, label: Optional[str] = None, kind: Optional[str] = None, description: Optional[str] = None, household_id: Optional[int] = None) -> dict:
     return update_meeting_point(mp_id, label, kind, description, household_id)
+
+@server.tool(name="get_active_alerts", description="Get active alerts for the household area. Returns the source, simulation status, and a list of alerts. Note: if is_simulated is true, this is a drill, not a real emergency.", annotations=ToolAnnotations(readOnlyHint=True))
+def tool_get_active_alerts(household_id: Optional[int] = None) -> dict:
+    return get_active_alerts(household_id)
+
+@server.tool(name="get_safety_advice", description="Get customized safety advice and actions based on the household plan and active alerts. If is_simulated is true, inform the user this is a simulated drill.", annotations=ToolAnnotations(readOnlyHint=True))
+def tool_get_safety_advice(household_id: Optional[int] = None) -> dict:
+    return get_safety_advice(household_id)
 
 if __name__ == "__main__":
     server.run(transport="streamable-http", host="127.0.0.1", port=8000)
