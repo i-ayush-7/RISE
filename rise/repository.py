@@ -40,7 +40,7 @@ class Repository:
     def update_member(self, member_id: int, updates: Dict[str, Any]) -> None:
         allowlist = {'name', 'age_group', 'support_level', 'mobility_needs', 'medical_needs', 'notes', 'is_pet'}
         if not updates:
-            return
+            raise ValueError("Updates dictionary cannot be empty")
         for key in updates.keys():
             if key not in allowlist:
                 raise ValueError(f"Disallowed column name: {key}")
@@ -73,7 +73,7 @@ class Repository:
     def update_contact(self, contact_id: int, updates: Dict[str, Any]) -> None:
         allowlist = {'name', 'relationship', 'phone', 'priority'}
         if not updates:
-            return
+            raise ValueError("Updates dictionary cannot be empty")
         for key in updates.keys():
             if key not in allowlist:
                 raise ValueError(f"Disallowed column name: {key}")
@@ -106,7 +106,7 @@ class Repository:
     def update_meeting_point(self, mp_id: int, updates: Dict[str, Any]) -> None:
         allowlist = {'label', 'description', 'kind'}
         if not updates:
-            return
+            raise ValueError("Updates dictionary cannot be empty")
         for key in updates.keys():
             if key not in allowlist:
                 raise ValueError(f"Disallowed column name: {key}")

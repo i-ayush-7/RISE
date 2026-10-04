@@ -96,6 +96,14 @@ class TestDatabase(unittest.TestCase):
         
         with self.assertRaises(ValueError):
             self.repo.update_member(m.id, {"id": 9999, "name": "Johnny"})
+
+    def test_update_empty_dict_raises_value_error(self):
+        h = self.repo.create_household("Test Family")
+        m = Member(id=None, household_id=h.id, name="John", age_group="adult", support_level="independent")
+        self.repo.add_member(m)
+        
+        with self.assertRaises(ValueError):
+            self.repo.update_member(m.id, {})
             
     def test_sql_injection_attempt_stored_as_text(self):
         h = self.repo.create_household("Test Family")
