@@ -99,8 +99,7 @@ def list_households() -> List[Dict[str, Any]]:
         cursor = conn.execute("SELECT id, name, address_note FROM households")
         return [dict(row) for row in cursor.fetchall()]
 
-@_convert_error
-def get_household_plan(household_id: Optional[int] = None) -> Dict[str, Any]:
+def _load_plan(household_id: Optional[int] = None) -> Dict[str, Any]:
     repo = get_repo()
     hid = resolve_household_id(repo, household_id)
     summary_data = repo.get_household_summary(hid)
@@ -144,6 +143,10 @@ def get_household_plan(household_id: Optional[int] = None) -> Dict[str, Any]:
     summary_data['summary'] = summary_str
     summary_data['pets'] = pets
     return summary_data
+
+@_convert_error
+def get_household_plan(household_id: Optional[int] = None) -> Dict[str, Any]:
+    return _load_plan(household_id)
 
 @_convert_error
 def list_people_needing_help(household_id: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -297,9 +300,7 @@ def get_active_alerts(household_id: Optional[int] = None) -> Dict[str, Any]:
 
 @_convert_error
 def get_safety_advice(household_id: Optional[int] = None) -> Dict[str, Any]:
-    repo = get_repo()
-    hid = resolve_household_id(repo, household_id)
-    plan = get_household_plan(hid)
+    plan = _load_plan(household_id)
     from rise.alerts import get_provider
     provider = get_provider()
     alerts = provider.get_alerts()

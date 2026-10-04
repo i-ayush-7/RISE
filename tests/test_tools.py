@@ -313,6 +313,12 @@ class TestTools(unittest.TestCase):
             update_member(m["id"], support_level="superhero")
         self.assertEqual("support_level must be one of: dependent, independent, needs_assistance", str(ctx.exception))
 
+    def test_get_safety_advice_household_not_found(self):
+        self.repo.create_household("Fam")
+        with self.assertRaises(ToolError) as ctx:
+            rise.tools.get_safety_advice(999)
+        self.assertEqual("Household not found.", str(ctx.exception))
+
     def test_error_message_leakage(self):
         from rise.tools import _convert_error
         import sqlite3

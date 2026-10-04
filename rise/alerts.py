@@ -42,22 +42,42 @@ class AlertProvider(ABC):
         pass
 
 class FixtureAlertProvider(AlertProvider):
-    def __init__(self, scenario: str):
+    def __init__(self, scenario: str, fixtures_dir: Optional[Path] = None):
         self.name = "fixture"
         self.is_simulated = True
         self.scenario = scenario
-        self.fixtures_dir = Path(__file__).parent.parent / "fixtures"
+        self.fixtures_dir = fixtures_dir if fixtures_dir is not None else Path(__file__).parent.parent / "fixtures"
 
     def get_alerts(self) -> List[Alert]:
         filepath = self.fixtures_dir / f"alerts_{self.scenario}.json"
         if not filepath.exists():
             raise ValueError(f"Fixture file not found: {filepath.name}")
             
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            raise ValueError("Fixture file is invalid: invalid JSON")
+            
+        if not isinstance(data, list):
+            raise ValueError("Fixture file is invalid: not a list")
+            
+        valid_fields = {'id', 'hazard', 'severity', 'headline', 'area_description', 'issued_at', 'source', 'instructions', 'expires_at'}
+        required_fields = {'id', 'hazard', 'severity', 'headline', 'area_description', 'issued_at', 'source'}
             
         alerts = []
         for item in data:
+            if not isinstance(item, dict):
+                raise ValueError("Fixture file is invalid: item is not an object")
+                
+            for req in required_fields:
+                if req not in item:
+                    raise ValueError(f"Fixture file is invalid: missing field {req}")
+                    
+            for key in item.keys():
+                if key not in valid_fields:
+                    raise ValueError(f"Fixture file is invalid: unknown field {key}")
+                    
             alerts.append(Alert(**item))
         return alerts
 
