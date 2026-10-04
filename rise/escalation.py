@@ -63,6 +63,11 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: Any) -> D
         
     unaccounted_people_sorted = sorted(unaccounted_people, key=sort_key_unaccounted)
     
+    def join_names(names: List[str]) -> str:
+        if not names: return ""
+        if len(names) == 1: return names[0]
+        return ", ".join(names[:-1]) + f" and {names[-1]}"
+    
     raw_steps = []
     def add_step(priority, who, action, reason=""):
         raw_steps.append({
@@ -85,7 +90,7 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: Any) -> D
             
     contacts = sorted(plan.get("contacts", []), key=lambda c: c.get("priority", 999))
     unacc_names = [p["name"] for p in unaccounted_people_sorted]
-    unacc_str = ", ".join(unacc_names)
+    unacc_str = join_names(unacc_names)
     
     if level >= 2:
         if not contacts:
@@ -102,8 +107,9 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: Any) -> D
         
     not_safe_pets = [m for m in pets_state if m.get("status") != "safe"]
     if not_safe_pets:
-        pet_names = " and ".join(p["name"] for p in not_safe_pets)
-        add_step(5, None, f"Confirm where {pet_names} are")
+        pet_names = join_names([p["name"] for p in not_safe_pets])
+        verb = "is" if len(not_safe_pets) == 1 else "are"
+        add_step(5, None, f"Confirm where {pet_names} {verb}")
         
     if all_accounted_for:
         add_step(9, None, "Everyone is confirmed safe. Close the check-in when you are ready.")
@@ -117,14 +123,16 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: Any) -> D
             seen.add(k)
             dedup.append(s)
             
-    dedup.sort(key=lambda x: (x["priority"], x["who"] or ""))
+    def step_sort_key(s):
+        if not s["who"]:
+            vuln = 0
+        else:
+            vuln = 0 if is_vulnerable(s["who"]) else 1
+        return (s["priority"], vuln, s["who"] or "")
+        
+    dedup.sort(key=step_sort_key)
     next_steps = dedup[:10]
     
-    def join_names(names: List[str]) -> str:
-        if not names: return ""
-        if len(names) == 1: return names[0]
-        return ", ".join(names[:-1]) + f" and {names[-1]}"
-        
     speakable_parts = []
     if all_accounted_for:
         speakable_parts.append("Everyone is confirmed safe.")

@@ -31,7 +31,8 @@ class TestEscalation(unittest.TestCase):
     def _state_from_statuses(self, statuses, started_at_offset=0):
         members = []
         for name, status in statuses.items():
-            is_pet = 1 if name == "Buddy" else 0
+            pm = next((m for m in self.rivera_plan["members"] if m["name"] == name), None)
+            is_pet = pm["is_pet"] if pm else (1 if name == "Buddy" else 0)
             members.append({
                 "name": name,
                 "is_pet": is_pet,
@@ -120,7 +121,7 @@ class TestEscalation(unittest.TestCase):
         state = self._state_from_statuses({"Buddy": "pending"})
         esc = build_escalation(self.rivera_plan, state, self.now)
         p5_steps = [s for s in esc["next_steps"] if s["priority"] == 5]
-        self.assertEqual(p5_steps[0]["action"], "Confirm where Buddy are")
+        self.assertEqual(p5_steps[0]["action"], "Confirm where Buddy is")
 
     def test_all_safe(self):
         state = self._state_from_statuses({"Maria": "safe", "Buddy": "safe"})
@@ -186,6 +187,57 @@ class TestEscalation(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom):
                 self.assertNotIn(node.module, ["sqlite3", "os", "socket", "urllib", "http", "ssl", "requests", "httpx", "time"])
 
+
+    def test_join_names(self):
+        from rise.escalation import build_escalation
+        # Hack to access join_names, we can just test it by providing state
+        # 1 name
+        state = self._state_from_statuses({"Maria": "safe", "Buddy": "pending"}, 0)
+        esc = build_escalation(self.rivera_plan, state, self.now)
+        self.assertIn("1 of 1 person is confirmed safe", esc["speakable"])
+        
+        # 2 names
+        state = self._state_from_statuses({"Maria": "safe", "Carlos": "safe"}, 0)
+        esc = build_escalation(self.rivera_plan, state, self.now)
+        self.assertIn("Safe: Maria and Carlos", esc["draft_message"])
+        
+        # 3 names
+        state = self._state_from_statuses({"Maria": "safe", "Carlos": "safe", "Leo": "safe"}, 0)
+        esc = build_escalation(self.rivera_plan, state, self.now)
+        self.assertIn("Safe: Maria, Carlos and Leo", esc["draft_message"])
+        
+    def test_contact_action_wording_two_unaccounted(self):
+        state = self._state_from_statuses({"Maria": "pending", "Carlos": "pending"}, 12)
+        esc = build_escalation(self.rivera_plan, state, self.now)
+        steps = esc["next_steps"]
+        contact_step = next(s for s in steps if s["priority"] == 2)
+        self.assertEqual(contact_step["action"], "Contact Uncle Juan and ask them to help check on Carlos and Maria")
+        
+    def test_singular_and_plural_pet_wording(self):
+        # 1 pet pending
+        state = self._state_from_statuses({"Buddy": "pending"}, 0)
+        esc = build_escalation(self.rivera_plan, state, self.now)
+        pet_step = next(s for s in esc["next_steps"] if s["priority"] == 5)
+        self.assertEqual(pet_step["action"], "Confirm where Buddy is")
+        self.assertIn("Buddy not yet confirmed.", esc["speakable"])
+        
+        # 2 pets pending
+        self.rivera_plan["members"].append({"name": "Rex", "is_pet": 1, "support_level": "dependent"})
+        state = self._state_from_statuses({"Buddy": "pending", "Rex": "pending"}, 0)
+        esc = build_escalation(self.rivera_plan, state, self.now)
+        pet_step = next(s for s in esc["next_steps"] if s["priority"] == 5)
+        self.assertEqual(pet_step["action"], "Confirm where Buddy and Rex are")
+        self.assertIn("Buddy and Rex not yet confirmed.", esc["speakable"])
+        self.rivera_plan["members"].pop()
+        
+    def test_vulnerable_first_and_capping(self):
+        # Carlos (independent) and Elena (vulnerable) both pending
+        state = self._state_from_statuses({"Carlos": "pending", "Elena": "pending"}, 0)
+        esc = build_escalation(self.rivera_plan, state, self.now)
+        steps = esc["next_steps"]
+        p1_names = [s["who"] for s in steps if s["priority"] == 1]
+        # Elena's step comes before Carlos's
+        self.assertEqual(p1_names, ["Elena", "Carlos"])
 
 class TestToolsEndToEnd(unittest.TestCase):
     def setUp(self):

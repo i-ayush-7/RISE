@@ -56,6 +56,9 @@ def start_incident(db_path: Path, household_id: int, reason: Optional[str], now:
             )
 
 def record_checkin(db_path: Path, household_id: int, member_query: str, status: str, note: Optional[str], now: datetime):
+    if not isinstance(member_query, str) or not member_query.strip():
+        raise ValueError("Please say which household member you mean.")
+        
     valid_statuses = ['needs_help', 'not_responding', 'pending', 'safe']
     if status not in valid_statuses:
         raise ValueError(f"Status must be one of: {', '.join(valid_statuses)}")

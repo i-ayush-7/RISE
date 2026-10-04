@@ -172,5 +172,43 @@ class TestCheckinsDataLayer(unittest.TestCase):
             chks = conn.execute("SELECT * FROM checkins").fetchall()
             self.assertEqual(len(chks), 0)
 
+    def test_empty_member_name_rejected(self):
+        self.repo.add_member(Member(id=0, household_id=self.hh.id, name="Alice", age_group="adult", support_level="independent", is_pet=0))
+        start_incident(self.db_path, self.hh.id, "R", self.now)
+        with self.assertRaisesRegex(ValueError, "Please say which household member you mean."):
+            record_checkin(self.db_path, self.hh.id, "", "safe", None, self.now)
+        with self.assertRaisesRegex(ValueError, "Please say which household member you mean."):
+            record_checkin(self.db_path, self.hh.id, "   ", "safe", None, self.now)
+            
+    def test_note_cleared_by_subsequent_update_without_note(self):
+        self.repo.add_member(Member(id=0, household_id=self.hh.id, name="Alice", age_group="adult", support_level="independent", is_pet=0))
+        start_incident(self.db_path, self.hh.id, "R", self.now)
+        record_checkin(self.db_path, self.hh.id, "Alice", "needs_help", "Bleeding", self.now)
+        state = get_incident_state(self.db_path, self.hh.id)
+        self.assertEqual(state["members"][0]["note"], "Bleeding")
+        
+        record_checkin(self.db_path, self.hh.id, "Alice", "safe", None, self.now)
+        state = get_incident_state(self.db_path, self.hh.id)
+        self.assertIsNone(state["members"][0]["note"])
+        
+    def test_stale_connection_check(self):
+        # Do some DB operations
+        self.repo.add_member(Member(id=0, household_id=self.hh.id, name="Alice", age_group="adult", support_level="independent", is_pet=0))
+        start_incident(self.db_path, self.hh.id, "R", self.now)
+        state = get_incident_state(self.db_path, self.hh.id)
+        self.assertEqual(state["status"], "active")
+        
+        # Test file unlink (should succeed on Windows if connections are closed)
+        import tempfile
+        import shutil
+        temp_dir = Path(tempfile.mkdtemp())
+        new_path = temp_dir / "moved.db"
+        try:
+            # We must be able to rename it without PermissionError
+            self.db_path.rename(new_path)
+            new_path.rename(self.db_path)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 if __name__ == "__main__":
     unittest.main()
