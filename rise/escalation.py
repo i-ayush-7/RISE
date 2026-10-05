@@ -23,7 +23,7 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: datetime)
         if status != "safe":
             all_accounted_for = False
             
-    started_at_str = state.get("started_at") if state else now.isoformat()
+    started_at_str = state.get("started_at") if (state and state.get("started_at")) else now.isoformat()
     started_at = datetime.fromisoformat(started_at_str)
     if started_at.tzinfo is None:
         started_at = started_at.replace(tzinfo=timezone.utc)
@@ -73,32 +73,34 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: datetime)
         return join_names(names[:6]) + f" and {len(names)-6} more"
         
     raw_steps = []
-    def add_step(priority, who, action, reason=""):
+    def add_step(priority, who, action, reason="", _mid=None, tier=0):
         raw_steps.append({
             "priority": priority,
             "who": who,
             "action": action,
-            "reason": reason
+            "reason": reason,
+            "_mid": _mid,
+            "tier": tier
         })
         
     if needs_help_people:
         add_step(0, None, "If anyone is in immediate danger, call your local emergency number")
         for p in ordered_help:
-            add_step(0, p["name"], f"Help {p['name']}", p.get("note") or "")
+            add_step(0, p["name"], f"Help {p['name']}", p.get("note") or "", _mid=p.get("member_id"))
             
     for p in ordered[:6]:
         if level == 0:
-            add_step(1, p["name"], f"Check that {p['name']} is safe")
+            add_step(1, p["name"], f"Check that {p['name']} is safe", _mid=p.get("member_id"))
         else:
-            add_step(1, p["name"], f"Call {p['name']} directly")
+            add_step(1, p["name"], f"Call {p['name']} directly", _mid=p.get("member_id"))
             
     if len(ordered) > 6:
         more_names = join_names([p["name"] for p in ordered[6:]])
-        add_step(1, None, f"Also check on {len(ordered)-6} more: {more_names}")
+        add_step(1, None, f"Also check on {len(ordered)-6} more: {more_names}", tier=1)
             
     contacts = sorted(plan.get("contacts", []), key=lambda c: c.get("priority", 999))
     contact_targets = sorted(not_safe_people, key=sort_key)
-    contact_targets_str = join_names([p["name"] for p in contact_targets])
+    contact_targets_str = join_names_capped([p["name"] for p in contact_targets])
     
     if level >= 2:
         if not contacts:
@@ -115,7 +117,7 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: datetime)
         
     not_safe_pets = [m for m in pets_state if m.get("status") != "safe"]
     if not_safe_pets:
-        pet_names = join_names([p["name"] for p in not_safe_pets])
+        pet_names = join_names_capped([p["name"] for p in not_safe_pets])
         verb = "is" if len(not_safe_pets) == 1 else "are"
         add_step(5, None, f"Confirm where {pet_names} {verb}")
         
@@ -132,21 +134,20 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: datetime)
         dedup = []
         seen = set()
         for s in raw_steps:
-            k = (s["priority"], s["who"], s["action"], s["reason"])
+            k = (s["priority"], s["who"], s["action"], s["reason"], s.get("_mid"))
             if k not in seen:
                 seen.add(k)
                 dedup.append(s)
                 
         def step_sort_key(s):
-            if not s["who"]:
+            mid = s.get("_mid")
+            vuln = 0 if mid and is_vulnerable(mid) else 1
+            if not mid:
                 vuln = 0
-            else:
-                m_id = next((m.get("member_id") for m in members_state if m.get("name") == s["who"]), None)
-                vuln = 0 if is_vulnerable(m_id) else 1
-            return (s["priority"], vuln, s["who"] or "")
+            return (s["priority"], s.get("tier", 0), vuln, s["name"] if "name" in s else (s["who"] or ""), mid or 0)
             
         dedup.sort(key=step_sort_key)
-        next_steps = dedup[:10]
+        next_steps = [{k: v for k, v in s.items() if k not in ("_mid", "tier")} for s in dedup[:10]]
         
         speakable_parts = []
         if all_accounted_for:
@@ -163,17 +164,17 @@ def build_escalation(plan: Dict[str, Any], state: Dict[str, Any], now: datetime)
                 speakable_parts.append(f"{num_safe} of {num_people} people are confirmed safe.")
                 
             if ordered_help:
-                n = join_names([p["name"] for p in ordered_help])
+                n = join_names_capped([p["name"] for p in ordered_help])
                 verb = "needs" if len(ordered_help) == 1 else "need"
                 speakable_parts.append(f"{n} {verb} help.")
                 
             if ordered:
-                n = join_names([p["name"] for p in ordered])
+                n = join_names_capped([p["name"] for p in ordered])
                 verb = "has" if len(ordered) == 1 else "have"
                 speakable_parts.append(f"{n} {verb} not responded.")
                 
             if not_safe_pets:
-                n = join_names([p["name"] for p in not_safe_pets])
+                n = join_names_capped([p["name"] for p in not_safe_pets])
                 speakable_parts.append(f"{n} not yet confirmed.")
                 
         speakable_str = " ".join(speakable_parts)

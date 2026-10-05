@@ -87,6 +87,11 @@ class TestEscalation(unittest.TestCase):
         self.assertIn("Elena", names)
         self.assertIn("Leo", names)
         
+        # Assert priority-1 step order is by member vulnerability
+        # Vulnerable are Elena and Leo. Independent are Person0...Person3.
+        # So the first two must be Elena and Leo
+        self.assertEqual(set(names[:2]), {"Elena", "Leo"})
+        
         more_steps = [s for s in steps if s["priority"] == 1 and s["who"] is None]
         self.assertEqual(len(more_steps), 1)
         self.assertTrue(more_steps[0]["action"].startswith("Also check on 2 more:"))
@@ -245,6 +250,230 @@ class TestEscalation(unittest.TestCase):
         # Elena's step comes before Carlos's
         self.assertEqual(p1_names, ["Elena", "Carlos"])
 
+    def test_needs_help_contact_targets(self):
+        plan = dict(self.rivera_plan)
+        plan["members"] = [
+            {"id": 1, "name": "Maria Rivera", "is_pet": 0, "support_level": "independent"},
+            {"id": 2, "name": "Carlos Rivera", "is_pet": 0, "support_level": "independent"},
+            {"id": 3, "name": "Elena Rivera", "is_pet": 0, "support_level": "needs_assistance", "mobility_needs": "Uses a cane"},
+            {"id": 4, "name": "Leo Rivera", "is_pet": 0, "support_level": "dependent"},
+            {"id": 5, "name": "Buddy", "is_pet": 1, "support_level": "dependent"}
+        ]
+        plan["contacts"] = [
+            {"name": "Uncle Juan", "priority": 1, "phone": "555-0199"},
+            {"name": "Dr. Sarah Jenkins", "priority": 2, "phone": "555-0100"}
+        ]
+        statuses = {"Maria Rivera": "safe", "Carlos Rivera": "safe", "Leo Rivera": "safe", "Elena Rivera": "needs_help", "Buddy": "pending"}
+        members = []
+        for name, status in statuses.items():
+            pm = next((m for m in plan["members"] if m["name"] == name))
+            members.append({
+                "member_id": pm["id"],
+                "name": name,
+                "is_pet": pm["is_pet"],
+                "status": status,
+                "note": "fell and cannot stand" if status == "needs_help" else ""
+            })
+        state = {"started_at": (self.now - timedelta(minutes=12)).isoformat(), "members": members}
+        
+        esc12 = build_escalation(plan, state, self.now)
+        step_juan = next(s for s in esc12["next_steps"] if s["priority"] == 2)
+        self.assertEqual(step_juan["action"], "Contact Uncle Juan and ask them to help check on Elena Rivera")
+        self.assertEqual(step_juan["reason"], "Phone: 555-0199")
+        self.assertFalse(step_juan["action"].endswith("check on "))
+        
+        state25 = {"started_at": (self.now - timedelta(minutes=25)).isoformat(), "members": members}
+        esc25 = build_escalation(plan, state25, self.now)
+        step_dr = next(s for s in esc25["next_steps"] if s["priority"] == 3 and s["who"] == "Dr. Sarah Jenkins")
+        self.assertEqual(step_dr["action"], "Contact Dr. Sarah Jenkins and ask them to help check on Elena Rivera")
+        self.assertFalse(step_dr["action"].endswith("check on "))
+        
+    def test_needs_help_no_contacts(self):
+        plan = dict(self.rivera_plan)
+        plan["members"] = [{"id": 3, "name": "Elena Rivera", "is_pet": 0, "support_level": "needs_assistance", "mobility_needs": "Uses a cane"}]
+        plan["contacts"] = []
+        members = [{"member_id": 3, "name": "Elena Rivera", "is_pet": 0, "status": "needs_help", "note": ""}]
+        state = {"started_at": (self.now - timedelta(minutes=12)).isoformat(), "members": members}
+        esc12 = build_escalation(plan, state, self.now)
+        step_nc = next(s for s in esc12["next_steps"] if s["priority"] == 2)
+        self.assertEqual(step_nc["action"], "No emergency contacts are saved. Ask a neighbor or local authorities to help check on Elena Rivera")
+        
+    def test_contact_targets_needs_help_and_pending_order(self):
+        plan = dict(self.rivera_plan)
+        plan["members"] = [
+            {"id": 3, "name": "Elena Rivera", "is_pet": 0, "support_level": "needs_assistance", "mobility_needs": "cane"},
+            {"id": 4, "name": "Leo Rivera", "is_pet": 0, "support_level": "independent"}
+        ]
+        plan["contacts"] = [{"name": "Uncle Juan", "priority": 1, "phone": "555-0199"}]
+        members = [
+            {"member_id": 3, "name": "Elena Rivera", "is_pet": 0, "status": "needs_help", "note": ""},
+            {"member_id": 4, "name": "Leo Rivera", "is_pet": 0, "status": "pending", "note": ""}
+        ]
+        state = {"started_at": (self.now - timedelta(minutes=12)).isoformat(), "members": members}
+        esc12 = build_escalation(plan, state, self.now)
+        step_juan = next(s for s in esc12["next_steps"] if s["priority"] == 2)
+        self.assertTrue(step_juan["action"].endswith("help check on Elena Rivera and Leo Rivera"))
+        
+    def test_speakable_and_draft_vulnerable_first(self):
+        plan = dict(self.rivera_plan)
+        plan["members"] = [
+            {"id": 2, "name": "Carlos Rivera", "is_pet": 0, "support_level": "independent"},
+            {"id": 3, "name": "Elena Rivera", "is_pet": 0, "support_level": "needs_assistance", "mobility_needs": "cane"}
+        ]
+        members = [
+            {"member_id": 2, "name": "Carlos Rivera", "is_pet": 0, "status": "pending", "note": ""},
+            {"member_id": 3, "name": "Elena Rivera", "is_pet": 0, "status": "pending", "note": ""}
+        ]
+        state = {"started_at": self.now.isoformat(), "members": members}
+        esc = build_escalation(plan, state, self.now)
+        self.assertIn("Elena Rivera and Carlos Rivera have not responded.", esc["speakable"])
+        self.assertIn("Not yet reached: Elena Rivera and Carlos Rivera.", esc["draft_message"])
+        self.assertIn("Please help check on Elena Rivera and Carlos Rivera.", esc["draft_message"])
+        
+    def test_also_check_on_more_is_after_person_steps(self):
+        plan = dict(self.rivera_plan)
+        plan["members"] = [
+            {"id": i, "name": f"V{i}", "support_level": "dependent", "is_pet": 0} for i in range(1, 5)
+        ] + [
+            {"id": i, "name": f"I{i}", "support_level": "independent", "is_pet": 0} for i in range(5, 9)
+        ]
+        members = [{"member_id": m["id"], "name": m["name"], "is_pet": 0, "status": "pending", "note": ""} for m in plan["members"]]
+        state = {"started_at": self.now.isoformat(), "members": members}
+        esc = build_escalation(plan, state, self.now)
+        
+        p1 = [s for s in esc["next_steps"] if s["priority"] == 1]
+        self.assertEqual(len(p1), 7)
+        for i in range(6):
+            self.assertIsNotNone(p1[i]["who"])
+        self.assertEqual([s["who"] for s in p1[:4]], ["V1", "V2", "V3", "V4"])
+        self.assertIsNone(p1[6]["who"])
+        self.assertTrue(p1[6]["action"].startswith("Also check on 2 more: "))
+        
+    def test_empty_state(self):
+        esc = build_escalation(self.rivera_plan, {"members": []}, self.now)
+        self.assertFalse(esc["all_accounted_for"])
+        self.assertEqual(esc["counts"]["total"], 0)
+        self.assertEqual(esc["speakable"], "No one has been added to this check-in yet.")
+        self.assertEqual(esc["next_steps"], [])
+        self.assertEqual(esc["draft_message"], "R.I.S.E. check-in for The Rivera Family. No one has been added yet.")
+        
+    def test_pets_only_states(self):
+        plan = dict(self.rivera_plan)
+        esc_safe = build_escalation(plan, {"started_at": self.now.isoformat(), "members": [{"member_id": 5, "name": "Buddy", "is_pet": 1, "status": "safe", "note": ""}]}, self.now)
+        self.assertTrue(esc_safe["all_accounted_for"])
+        self.assertEqual(esc_safe["speakable"], "Everyone is confirmed safe.")
+        
+        esc_pend = build_escalation(plan, {"started_at": self.now.isoformat(), "members": [{"member_id": 5, "name": "Buddy", "is_pet": 1, "status": "pending", "note": ""}]}, self.now)
+        self.assertFalse(esc_pend["all_accounted_for"])
+        self.assertEqual(esc_pend["speakable"], "There are no people in this check-in. Buddy not yet confirmed.")
+        
+    def test_speakable_first_sentences(self):
+        plan = dict(self.rivera_plan)
+        m_safe = {"member_id": 1, "name": "P1", "is_pet": 0, "status": "safe", "note": ""}
+        m_pend = {"member_id": 2, "name": "P2", "is_pet": 0, "status": "pending", "note": ""}
+        
+        esc_1s = build_escalation(plan, {"started_at": self.now.isoformat(), "members": [m_safe]}, self.now)
+        self.assertEqual(esc_1s["speakable"], "Everyone is confirmed safe.")
+        
+        esc_1p = build_escalation(plan, {"started_at": self.now.isoformat(), "members": [m_pend]}, self.now)
+        self.assertIn("0 of 1 person is confirmed safe. P2 has not responded.", esc_1p["speakable"])
+        
+        m_all_pend = [{"member_id": i, "name": f"P{i}", "is_pet": 0, "status": "pending", "note": ""} for i in range(4)]
+        esc_4p = build_escalation(plan, {"started_at": self.now.isoformat(), "members": m_all_pend}, self.now)
+        self.assertIn("0 of 4 people are confirmed safe.", esc_4p["speakable"])
+        
+    def test_same_name_members_not_collapsed(self):
+        plan = dict(self.rivera_plan)
+        plan["members"] = [
+            {"id": 1, "name": "Alex", "support_level": "independent", "is_pet": 0},
+            {"id": 2, "name": "Alex", "support_level": "needs_assistance", "mobility_needs": "cane", "is_pet": 0}
+        ]
+        members = [
+            {"member_id": 1, "name": "Alex", "is_pet": 0, "status": "pending", "note": ""},
+            {"member_id": 2, "name": "Alex", "is_pet": 0, "status": "pending", "note": ""}
+        ]
+        state = {"started_at": (self.now - timedelta(minutes=6)).isoformat(), "members": members}
+        esc = build_escalation(plan, state, self.now)
+        alex_steps = [s for s in esc["next_steps"] if s["action"] == "Call Alex directly"]
+        self.assertEqual(len(alex_steps), 2)
+        self.assertIn("Alex and Alex have not responded.", esc["speakable"])
+        
+    def test_thresholds_use_constant(self):
+        plan = dict(self.rivera_plan)
+        m_pend = [{"member_id": 1, "name": "P1", "is_pet": 0, "status": "pending", "note": ""}]
+        import rise.escalation
+        orig = rise.escalation.ESCALATION_MINUTES
+        try:
+            rise.escalation.ESCALATION_MINUTES = (5, 10, 20)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=4)).isoformat(), "members": m_pend}, self.now)["level"], 0)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=5)).isoformat(), "members": m_pend}, self.now)["level"], 1)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=9)).isoformat(), "members": m_pend}, self.now)["level"], 1)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=10)).isoformat(), "members": m_pend}, self.now)["level"], 2)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=19)).isoformat(), "members": m_pend}, self.now)["level"], 2)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=20)).isoformat(), "members": m_pend}, self.now)["level"], 3)
+            
+            rise.escalation.ESCALATION_MINUTES = (1, 2, 3)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=0)).isoformat(), "members": m_pend}, self.now)["level"], 0)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=1)).isoformat(), "members": m_pend}, self.now)["level"], 1)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=2)).isoformat(), "members": m_pend}, self.now)["level"], 2)
+            self.assertEqual(build_escalation(plan, {"started_at": (self.now - timedelta(minutes=3)).isoformat(), "members": m_pend}, self.now)["level"], 3)
+        finally:
+            rise.escalation.ESCALATION_MINUTES = orig
+            
+    def test_draft_message_limits(self):
+        plan = dict(self.rivera_plan)
+        name40 = "A" * 40
+        plan["members"] = [{"id": i, "name": f"{name40}_{i:02d}", "support_level": "independent", "is_pet": 0} for i in range(30)]
+        members = [{"member_id": m["id"], "name": m["name"], "is_pet": 0, "status": "pending", "note": ""} for m in plan["members"]]
+        members[0]["status"] = "needs_help"
+        members[0]["note"] = "B" * 300
+        
+        state = {"started_at": self.now.isoformat(), "members": members}
+        esc = build_escalation(plan, state, self.now)
+        msg = esc["draft_message"]
+        self.assertTrue(len(msg) <= 600)
+        self.assertTrue(msg.endswith("."))
+        self.assertNotIn("555", msg)
+        self.assertNotIn("cane", msg)
+        self.assertNotIn("medication", msg)
+        
+        # A needs_help person with a 300-character note
+        members_1 = [{"member_id": 1, "name": "Solo", "is_pet": 0, "status": "needs_help", "note": "B" * 300}]
+        esc_1 = build_escalation(plan, {"started_at": self.now.isoformat(), "members": members_1}, self.now)
+        msg_1 = esc_1["draft_message"]
+        
+        self.assertIn("...", msg_1)
+        import re
+        m = re.search(r'\((.*?)\)', msg_1)
+        if m:
+            self.assertTrue(len(m.group(1)) <= 63)
+            
+    def test_build_escalation_naive_now_rejected(self):
+        plan = dict(self.rivera_plan)
+        from datetime import datetime
+        naive = datetime.now()
+        with self.assertRaisesRegex(ValueError, "now must be timezone-aware"):
+            build_escalation(plan, {"members": []}, naive)
+            
+        state = {"started_at": "2026-10-05T00:00:00", "members": []}
+        esc = build_escalation(plan, state, self.now)
+        self.assertEqual(esc["elapsed_minutes"], 0)
+        
+    def test_speakable_capped_over_six(self):
+        plan = dict(self.rivera_plan)
+        plan["members"] = [{"id": i, "name": f"P{i}", "support_level": "independent", "is_pet": 0} for i in range(10)]
+        members = [{"member_id": m["id"], "name": m["name"], "is_pet": 0, "status": "pending", "note": ""} for m in plan["members"]]
+        state = {"started_at": self.now.isoformat(), "members": members}
+        esc = build_escalation(plan, state, self.now)
+        
+        self.assertIn("and 4 more", esc["speakable"])
+        self.assertNotIn("P7", esc["speakable"])
+        self.assertIn("and 4 more", esc["draft_message"])
+        self.assertNotIn("P7", esc["draft_message"])
+
+if __name__ == '__main__':
+    unittest.main()
+
 class TestToolsEndToEnd(unittest.TestCase):
     def setUp(self):
         self.db_path = Path(__file__).parent / "test_tools_checkins_db.db"
@@ -315,5 +544,3 @@ class TestToolsEndToEnd(unittest.TestCase):
         self.assertIn("does not contact", source)
         self.assertIn("local emergency number", source)
 
-if __name__ == "__main__":
-    unittest.main()

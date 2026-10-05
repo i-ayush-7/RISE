@@ -248,3 +248,8 @@ class TestCheckinsDataLayer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_clean_text_whitespace_controls(self):
+        from rise.textutil import clean_text
+        self.assertEqual(clean_text("fell\x0band\x0ccannot\nstand", 100), "fell and cannot stand")
+        self.assertEqual(clean_text("Español 95°F", 100), "Español 95°F")
