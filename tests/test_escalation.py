@@ -471,6 +471,27 @@ class TestEscalation(unittest.TestCase):
         self.assertIn("and 4 more", esc["draft_message"])
         self.assertNotIn("P7", esc["draft_message"])
 
+
+    def test_draft_message_compact_fallback(self):
+        plan = dict(self.rivera_plan)
+        # 6 needs help, 6 safe, 8 pending -> Total 20 people
+        name40 = "A" * 40
+        plan["members"] = [{"id": i, "name": f"{name40}_{i:02d}", "support_level": "needs_assistance" if i < 6 else "independent", "is_pet": 0} for i in range(20)]
+        members = [{"member_id": m["id"], "name": m["name"], "is_pet": 0, "status": "needs_help" if i < 6 else ("safe" if i < 12 else "pending"), "note": "B"*300 if i < 6 else ""} for i, m in enumerate(plan["members"])]
+        
+        state = {"started_at": self.now.isoformat(), "members": members}
+        esc = build_escalation(plan, state, self.now)
+        msg = esc["draft_message"]
+        
+        self.assertTrue(len(msg) <= 600)
+        self.assertTrue(msg.startswith("R.I.S.E. check-in for"))
+        self.assertIn("safe,", msg)
+        self.assertIn("need help,", msg)
+        self.assertIn("not yet reached.", msg)
+        self.assertNotIn("555", msg)
+        self.assertNotIn("cane", msg)
+        self.assertNotIn("medication", msg)
+
 if __name__ == '__main__':
     unittest.main()
 

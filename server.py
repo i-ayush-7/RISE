@@ -86,4 +86,35 @@ def tool_close_checkin(household_id: Optional[int] = None) -> dict:
     return close_checkin(household_id)
 
 if __name__ == "__main__":
-    server.run(transport="streamable-http", host="127.0.0.1", port=8000)
+    import os
+    import sys
+    import uvicorn
+    from rise.security import load_security_config, SecurityMiddleware
+    from mcp.server.transport_security import TransportSecuritySettings
+    
+    try:
+        config = load_security_config(os.environ)
+    except ValueError as e:
+        print(e, file=sys.stderr)
+        sys.exit(2)
+        
+    ts = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=config["allowed_hosts"] + [f"{h}:*" for h in config["allowed_hosts"]],
+        allowed_origins=config["allowed_origins"] + [f"{o}:*" for o in config["allowed_origins"]]
+    )
+    
+    asgi_app = server.streamable_http_app(transport_security=ts)
+    wrapped_app = SecurityMiddleware(
+        asgi_app,
+        token=config["token"],
+        allowed_hosts=config["allowed_hosts"],
+        allowed_origins=config["allowed_origins"]
+    )
+    
+    auth_on = "on" if config["token"] is not None else "off"
+    print("Binding to 127.0.0.1:8000")
+    print(f"Auth: {auth_on}")
+    print(f"Allowed hosts: {', '.join(config['allowed_hosts'])}")
+    
+    uvicorn.run(wrapped_app, host="127.0.0.1", port=8000, access_log=True)

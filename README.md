@@ -108,3 +108,33 @@ Escalation thresholds are based on elapsed time:
 - 10-19 minutes: Level 2 (escalate to priority 1 contact)
 - >= 20 minutes: Level 3 (escalate to priority 2 contact and advise local emergency services)
 
+
+## Security
+
+The MCP server uses a bearer token for authentication to protect sensitive household data and emergency plans. The token prevents unauthorized access from malicious websites or unauthorized local apps. 
+
+**Generating a Token:**
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**Starting the Server Securely:**
+PowerShell:
+```powershell
+$env:RISE_AUTH_TOKEN="YOUR_GENERATED_TOKEN"
+python server.py
+```
+
+Bash:
+```bash
+RISE_AUTH_TOKEN="YOUR_GENERATED_TOKEN" python server.py
+```
+
+The server binds exclusively to `127.0.0.1` (localhost) by default. If you need to access the server locally without authentication for development, set `RISE_ALLOW_NO_AUTH=1`.
+
+The server also implements Host and Origin header validation to protect against DNS rebinding attacks. You can allow additional hosts by specifying a comma-separated list in `RISE_ALLOWED_HOSTS` and `RISE_ALLOWED_ORIGINS`.
+
+### Public tunnel (optional)
+A quick tunnel (for example Cloudflare's) exposes the server publicly over the internet.
+If you use a tunnel, the bearer token and `RISE_ALLOWED_HOSTS` must be set to the tunnel's hostname first. The token must be rotated afterwards.
+Nothing real should be stored in the household database. Judges can run the project locally without any tunnel.

@@ -351,11 +351,11 @@ def record_checkin(member_name: str, status: str, note: Optional[str] = None, ho
 @_convert_error
 def get_checkin_status(household_id: Optional[int] = None):
     hid = resolve_household_id(get_repo(), household_id)
-    from rise.checkins import get_incident_state
+    from rise.checkins import get_incident_state, NO_ACTIVE_MSG
     from rise.escalation import build_escalation
     state = get_incident_state(get_repo().db_path, hid)
     if not state:
-        raise ValueError("No check-in is active.")
+        raise ValueError(NO_ACTIVE_MSG)
     plan = get_household_plan(hid)
     res = build_escalation(plan, state, _now())
     res["incident_id"] = state["incident_id"]

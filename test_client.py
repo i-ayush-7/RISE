@@ -21,6 +21,10 @@ async def run_client():
     # Seed
     subprocess.run([sys.executable, "-m", "rise.seed"], env=env, check=True, capture_output=True)
     
+    token = os.environ.get("RISE_AUTH_TOKEN")
+    if not token and os.environ.get("RISE_ALLOW_NO_AUTH") != "1":
+        print("Warning: RISE_AUTH_TOKEN is missing. Set it or use RISE_ALLOW_NO_AUTH=1.")
+        
     # Start server
     server_proc = subprocess.Popen([sys.executable, "server.py"], env=env)
     
@@ -31,7 +35,9 @@ async def run_client():
     
     try:
         print(f"Connecting to {url}...")
-        async with streamable_http_client(url) as (read_stream, write_stream):
+        import httpx2
+        http_client = httpx2.AsyncClient(headers={"Authorization": f"Bearer {token}"}) if token else None
+        async with streamable_http_client(url, http_client=http_client) as (read_stream, write_stream):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 

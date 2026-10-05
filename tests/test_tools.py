@@ -337,5 +337,27 @@ class TestTools(unittest.TestCase):
         for forbidden in ["select", "insert", "update", "sqlite", "check"]:
             self.assertNotIn(forbidden, err)
 
-if __name__ == "__main__":
+
+    def test_checkins_no_active_msg(self):
+        from rise.tools import record_checkin, close_checkin, get_checkin_status, ToolError, get_repo
+        from rise.checkins import NO_ACTIVE_MSG
+        from rise.db import transaction
+        # Create a household first so it doesn't fail with "No households exist."
+        with transaction(get_repo().db_path) as conn:
+            cur = conn.cursor()
+            cur.execute("INSERT INTO households (name) VALUES ('Test HH')")
+        
+        expected = "No check-in is active. Use start_checkin to begin one."
+        self.assertEqual(NO_ACTIVE_MSG, expected)
+        
+        with self.assertRaisesRegex(ToolError, f"^{expected}$"):
+            record_checkin("Alice", "safe")
+            
+        with self.assertRaisesRegex(ToolError, f"^{expected}$"):
+            close_checkin()
+            
+        with self.assertRaisesRegex(ToolError, f"^{expected}$"):
+            get_checkin_status()
+
+if __name__ == '__main__':
     unittest.main()

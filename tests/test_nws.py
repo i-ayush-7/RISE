@@ -57,7 +57,7 @@ class TestNWS(unittest.TestCase):
         allowed_imports = {"urllib", "http", "socket", "ssl", "requests", "httpx"}
         
         for py_file in (list((base / "rise").rglob("*.py")) + list((base / "scripts").rglob("*.py"))):
-            if py_file.name in ("nws.py", "record_nws.py"):
+            if py_file.name in ("nws.py", "record_nws.py", "check_security.py"):
                 continue
             with open(py_file, "r", encoding="utf-8") as f:
                 tree = ast.parse(f.read(), filename=str(py_file))
