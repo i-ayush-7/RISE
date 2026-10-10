@@ -138,3 +138,9 @@ The server also implements Host and Origin header validation to protect against 
 A quick tunnel (for example Cloudflare's) exposes the server publicly over the internet.
 If you use a tunnel, the bearer token and `RISE_ALLOWED_HOSTS` must be set to the tunnel's hostname first. The token must be rotated afterwards.
 Nothing real should be stored in the household database. Judges can run the project locally without any tunnel.
+
+### Demo Mode
+For demonstration purposes, you can enable a simulated clock to test escalations without waiting in real-time.
+- Set `RISE_DEMO_MODE=1` and `RISE_DEMO_CLOCK_FILE=/absolute/path/to/clock.txt`.
+- The server will read an integer (minutes to advance) from that file and treat the current time as `real + offset`.
+- Demo mode is strictly local-only and must NEVER be used with a public tunnel (like Cloudflare) or `RISE_ALLOWED_HOSTS`. Any attempt to expose the server while in demo mode will cause a startup error.

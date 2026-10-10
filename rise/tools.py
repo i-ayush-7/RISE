@@ -332,7 +332,31 @@ def get_safety_advice(household_id: Optional[int] = None) -> Dict[str, Any]:
 
 def _now():
     import datetime
-    return datetime.datetime.now(datetime.timezone.utc)
+    import os
+    import logging
+    real = datetime.datetime.now(datetime.timezone.utc)
+    if os.environ.get("RISE_DEMO_MODE") == "1":
+        clock_file = os.environ.get("RISE_DEMO_CLOCK_FILE", "")
+        if not clock_file:
+            logging.getLogger(__name__).warning("Demo clock file is missing")
+            return real
+        try:
+            if os.path.getsize(clock_file) > 16:
+                logging.getLogger(__name__).warning("Demo clock file is over 16 bytes")
+                return real
+            with open(clock_file, "r", encoding="utf-8") as f:
+                data = f.read().strip()
+            if not data:
+                logging.getLogger(__name__).warning("Demo clock file is empty")
+                return real
+            val = int(data)
+            clamped = max(0, min(1440, val))
+            return real + datetime.timedelta(minutes=clamped)
+        except OSError:
+            logging.getLogger(__name__).warning("Demo clock file is unreadable or missing")
+        except ValueError:
+            logging.getLogger(__name__).warning("Demo clock file contains non-integer")
+    return real
 
 @_convert_error
 def start_checkin(reason: Optional[str] = None, household_id: Optional[int] = None):
@@ -360,6 +384,17 @@ def get_checkin_status(household_id: Optional[int] = None):
     res = build_escalation(plan, state, _now())
     res["incident_id"] = state["incident_id"]
     res["started_at"] = state["started_at"]
+    members_info = []
+    for m in sorted(state.get("members", []), key=lambda x: x.get("member_id", 0)):
+        members_info.append({
+            "member_id": m.get("member_id"),
+            "name": m.get("name"),
+            "is_pet": m.get("is_pet", 0),
+            "status": m.get("status"),
+            "note": m.get("note"),
+            "updated_at": m.get("updated_at")
+        })
+    res["members"] = members_info
     return res
 
 @_convert_error

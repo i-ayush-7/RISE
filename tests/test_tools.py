@@ -359,5 +359,159 @@ class TestTools(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, f"^{expected}$"):
             get_checkin_status()
 
+    from unittest.mock import patch
+    @patch('rise.tools._now')
+    def test_get_checkin_status_members_info(self, mock_now):
+        import datetime
+        import json
+        from rise.tools import start_checkin, record_checkin, get_checkin_status, add_member
+        from rise.seed import seed_data
+        seed_data(self.db_path)
+        
+        mock_now.return_value = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.timezone.utc)
+        start_checkin()
+        
+        mock_now.return_value = datetime.datetime(2026, 1, 1, 12, 5, tzinfo=datetime.timezone.utc)
+        record_checkin("Maria", "safe")
+        record_checkin("Elena", "needs_help", note="fell and cannot stand")
+        
+        add_member("NewGuy", "adult", "independent")
+        
+        st = get_checkin_status()
+        members = st["members"]
+        self.assertEqual(len(members), 6)
+        
+        maria = next(m for m in members if "Maria" in m["name"])
+        self.assertEqual(maria["status"], "safe")
+        self.assertEqual(maria["is_pet"], 0)
+        
+        elena = next(m for m in members if "Elena" in m["name"])
+        self.assertEqual(elena["status"], "needs_help")
+        self.assertEqual(elena["note"], "fell and cannot stand")
+        self.assertEqual(elena["is_pet"], 0)
+        
+        buddy = next(m for m in members if "Buddy" in m["name"])
+        self.assertEqual(buddy["is_pet"], 1)
+        
+        newguy = next(m for m in members if "NewGuy" in m["name"])
+        self.assertEqual(newguy["status"], "pending")
+        
+        for m in members:
+            self.assertEqual(set(m.keys()), {"member_id", "name", "is_pet", "status", "note", "updated_at"})
+            
+        st_json = json.dumps(st)
+        self.assertNotIn("Uses a cane", st_json)
+        self.assertNotIn("High blood pressure medication", st_json)
+
+    def test_demo_clock_valid(self):
+        import datetime
+        import tempfile
+        import os
+        from unittest.mock import patch
+        from rise.tools import _now
+        
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write("12")
+            temp_name = f.name
+            
+        try:
+            with patch.dict(os.environ, {"RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": temp_name}):
+                now = _now()
+                real = datetime.datetime.now(datetime.timezone.utc)
+                self.assertTrue(datetime.timedelta(minutes=11, seconds=50) <= (now - real) <= datetime.timedelta(minutes=12, seconds=10))
+        finally:
+            os.unlink(temp_name)
+
+    def test_demo_clock_valid_newline(self):
+        import datetime
+        import tempfile
+        import os
+        from unittest.mock import patch
+        from rise.tools import _now
+        
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write("12\n")
+            temp_name = f.name
+            
+        try:
+            with patch.dict(os.environ, {"RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": temp_name}):
+                now = _now()
+                real = datetime.datetime.now(datetime.timezone.utc)
+                self.assertTrue(datetime.timedelta(minutes=11, seconds=50) <= (now - real) <= datetime.timedelta(minutes=12, seconds=10))
+        finally:
+            os.unlink(temp_name)
+
+    def test_demo_clock_ignored_when_unset_or_invalid_mode(self):
+        import datetime
+        import tempfile
+        import os
+        from unittest.mock import patch
+        from rise.tools import _now
+        
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write("12")
+            temp_name = f.name
+            
+        try:
+            for mode in ["", "0", "true", "2"]:
+                with patch.dict(os.environ, {"RISE_DEMO_MODE": mode, "RISE_DEMO_CLOCK_FILE": temp_name}):
+                    now = _now()
+                    real = datetime.datetime.now(datetime.timezone.utc)
+                    self.assertTrue(abs((now - real).total_seconds()) < 2)
+        finally:
+            os.unlink(temp_name)
+            
+    def test_demo_clock_invalid_contents(self):
+        import datetime
+        import tempfile
+        import os
+        from unittest.mock import patch
+        from rise.tools import _now
+        
+        contents = ["abc", "", "-5", "1" * 17]
+        for content in contents:
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+                f.write(content)
+                temp_name = f.name
+                
+            try:
+                with patch.dict(os.environ, {"RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": temp_name}):
+                    now = _now()
+                    real = datetime.datetime.now(datetime.timezone.utc)
+                    self.assertTrue(abs((now - real).total_seconds()) < 2)
+            finally:
+                os.unlink(temp_name)
+
+    def test_demo_clock_missing_file(self):
+        import datetime
+        import os
+        from unittest.mock import patch
+        from rise.tools import _now
+        
+        with patch.dict(os.environ, {"RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": "does_not_exist_at_all.txt"}):
+            now = _now()
+            real = datetime.datetime.now(datetime.timezone.utc)
+            self.assertTrue(abs((now - real).total_seconds()) < 2)
+            
+    def test_demo_clock_clamp(self):
+        import datetime
+        import tempfile
+        import os
+        from unittest.mock import patch
+        from rise.tools import _now
+        
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+            f.write("99999")
+            temp_name = f.name
+            
+        try:
+            with patch.dict(os.environ, {"RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": temp_name}):
+                now = _now()
+                real = datetime.datetime.now(datetime.timezone.utc)
+                diff = (now - real).total_seconds()
+                self.assertTrue(1440 * 60 - 2 <= diff <= 1440 * 60 + 2)
+        finally:
+            os.unlink(temp_name)
+
 if __name__ == '__main__':
     unittest.main()

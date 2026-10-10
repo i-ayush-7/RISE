@@ -211,11 +211,28 @@ class TestSecurity(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "Invalid host"):
             load_security_config({"RISE_AUTH_TOKEN": "A" * 32, "RISE_ALLOWED_HOSTS": "evil_host"})
             
+    def test_config_demo_relative_clock_path(self):
+        with self.assertRaisesRegex(ValueError, "RISE_DEMO_CLOCK_FILE must be an absolute path when RISE_DEMO_MODE=1"):
+            load_security_config({"RISE_AUTH_TOKEN": "A" * 32, "RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": "relative/path"})
+
+    def test_config_demo_extra_host(self):
+        with self.assertRaisesRegex(ValueError, "Demo mode is local only: remove extra hosts from RISE_ALLOWED_HOSTS"):
+            load_security_config({"RISE_AUTH_TOKEN": "A" * 32, "RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": "C:/abs/path", "RISE_ALLOWED_HOSTS": "example.com"})
+
+    def test_config_demo_valid(self):
+        cfg = load_security_config({"RISE_AUTH_TOKEN": "A" * 32, "RISE_DEMO_MODE": "1", "RISE_DEMO_CLOCK_FILE": "C:/abs/path"})
+        self.assertTrue(cfg["demo_mode"])
+
+    def test_config_demo_invalid(self):
+        cfg = load_security_config({"RISE_AUTH_TOKEN": "A" * 32})
+        self.assertFalse(cfg["demo_mode"])
+            
     def test_source_checks(self):
         # 18. Source checks: server.py contains no "0.0.0.0"
         server_py = os.path.join(os.path.dirname(__file__), "..", "server.py")
-        content = open(server_py, "r").read()
+        content = open(server_py, "r", encoding="utf-8").read()
         self.assertNotIn("0.0.0.0", content)
+        self.assertIn("DEMO MODE", content)
         
         # No file in the repo contains a hard-coded token-like string of 32 or more URL-safe characters assigned to a variable named token
         import glob

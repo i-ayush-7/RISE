@@ -120,6 +120,13 @@ class SecurityMiddleware:
 def load_security_config(environ: Dict[str, str]) -> Dict[str, Any]:
     allow_no_auth = environ.get("RISE_ALLOW_NO_AUTH", "") == "1"
     token = environ.get("RISE_AUTH_TOKEN", "")
+    demo_mode = environ.get("RISE_DEMO_MODE") == "1"
+    
+    if demo_mode:
+        import os
+        clock_file = environ.get("RISE_DEMO_CLOCK_FILE", "")
+        if not clock_file or not os.path.isabs(clock_file):
+            raise ValueError("RISE_DEMO_CLOCK_FILE must be an absolute path when RISE_DEMO_MODE=1")
     
     if not allow_no_auth and len(token) < 32:
         raise ValueError("RISE_AUTH_TOKEN is required (at least 32 characters). Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\" ")
@@ -132,6 +139,8 @@ def load_security_config(environ: Dict[str, str]) -> Dict[str, Any]:
         hosts = ["localhost", "127.0.0.1"]
         extra_hosts = environ.get("RISE_ALLOWED_HOSTS", "")
         if extra_hosts:
+            if demo_mode:
+                raise ValueError("Demo mode is local only: remove extra hosts from RISE_ALLOWED_HOSTS")
             for h in extra_hosts.split(","):
                 h = h.strip().lower()
                 if not h: continue
@@ -150,5 +159,6 @@ def load_security_config(environ: Dict[str, str]) -> Dict[str, Any]:
     return {
         "token": token,
         "allowed_hosts": hosts,
-        "allowed_origins": origins
+        "allowed_origins": origins,
+        "demo_mode": demo_mode
     }
