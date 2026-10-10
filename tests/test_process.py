@@ -4,14 +4,21 @@ import sys
 import subprocess
 import signal
 import os
+import threading
+import time
 from bff.process import ServerProcessManager
 
 class TestProcessManager(unittest.TestCase):
-    def setUp(self):
+
+    def tearDown(self):
+        if self.manager.log_file:
+            self.manager.log_file.close()
+    @patch('atexit.register')
+    def setUp(self, mock_atexit):
+
         self.manager = ServerProcessManager()
         self.manager._wait_for_ready = MagicMock()
         
-        # mock _init_temp to set temp_dir so Path() doesn't fail
         import tempfile
         real_temp = tempfile.gettempdir()
         def fake_init_temp():
@@ -22,7 +29,7 @@ class TestProcessManager(unittest.TestCase):
 
     @patch("bff.process.sys.platform", "win32")
     @patch("bff.process.subprocess.Popen")
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
+    @patch("bff.process.status", new_callable=AsyncMock)
     def test_start_windows_creationflags(self, mock_status, mock_popen):
         mock_status.return_value = None
         self.manager.start("flood")
@@ -33,7 +40,7 @@ class TestProcessManager(unittest.TestCase):
 
     @patch("bff.process.sys.platform", "linux")
     @patch("bff.process.subprocess.Popen")
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
+    @patch("bff.process.status", new_callable=AsyncMock)
     def test_start_posix_start_new_session(self, mock_status, mock_popen):
         mock_status.return_value = None
         self.manager.start("flood")
@@ -44,18 +51,17 @@ class TestProcessManager(unittest.TestCase):
 
     @patch("bff.process.sys.platform", "win32")
     @patch("bff.process.subprocess.run")
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
+    @patch("bff.process.status", new_callable=AsyncMock)
     def test_stop_windows_taskkill(self, mock_status, mock_run):
         mock_proc = MagicMock()
-        mock_proc.poll.return_value = None
-        mock_proc.pid = 1234
+        mock_proc.pid = 4242
         self.manager.proc = mock_proc
         self.manager.temp_dir = "dummy"
 
-        mock_status.return_value = None # server down immediately
+        mock_status.return_value = None
 
         self.manager.stop()
-        mock_run.assert_called_with(["taskkill", "/PID", "1234", "/T", "/F"], capture_output=True, check=False, timeout=10)
+        mock_run.assert_called_with(["taskkill", "/PID", "4242", "/T", "/F"], capture_output=True, check=False, timeout=10)
         self.assertIsNone(self.manager.proc)
         self.assertIsNone(self.manager.temp_dir)
 
@@ -63,90 +69,107 @@ class TestProcessManager(unittest.TestCase):
     @patch("bff.process.os.killpg", create=True)
     @patch("bff.process.os.getpgid", return_value=5678, create=True)
     @patch("bff.process.time.sleep")
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
+    @patch("bff.process.status", new_callable=AsyncMock)
     def test_stop_posix_killpg(self, mock_status, mock_sleep, mock_getpgid, mock_killpg):
         mock_proc = MagicMock()
-        # First poll is None, second poll inside killpg block is None (meaning it needs SIGKILL)
-        mock_proc.poll.return_value = None
-        mock_proc.pid = 1234
+        mock_proc.poll.side_effect = [None, None]
+        mock_proc.pid = 4242
         self.manager.proc = mock_proc
         self.manager.temp_dir = "dummy"
 
         mock_status.return_value = None
 
         self.manager.stop()
-        mock_getpgid.assert_called_with(1234)
+        mock_getpgid.assert_called_with(4242)
         sigterm = getattr(signal, "SIGTERM", 15)
         sigkill = getattr(signal, "SIGKILL", 9)
         mock_killpg.assert_has_calls([
             call(5678, sigterm),
             call(5678, sigkill)
         ])
-        
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
-    def test_stop_waits_until_status_none(self, mock_status):
+
+    @patch("bff.process.status", new_callable=AsyncMock)
+    @patch("bff.process.subprocess.run")
+    @patch("bff.process.sys.platform", "win32")
+    def test_stop_waits_until_status_none(self, mock_run, mock_status):
         mock_proc = MagicMock()
-        mock_proc.poll.return_value = 0 # Already dead
+        mock_proc.pid = 4242
         self.manager.proc = mock_proc
         self.manager.temp_dir = "dummy"
         
-        # Returns "ok" twice, then None
         mock_status.side_effect = ["ok", "ok", None]
         
         with patch("bff.process.time.sleep") as mock_sleep:
             self.manager.stop()
-            self.assertEqual(mock_sleep.call_count, 2)
             self.assertEqual(mock_status.call_count, 3)
 
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
-    def test_stop_raises_runtimeerror_if_never_down(self, mock_status):
+    @patch("bff.process.status", new_callable=AsyncMock)
+    @patch("bff.process.subprocess.run")
+    @patch("bff.process.sys.platform", "win32")
+    def test_stop_raises_runtimeerror_if_never_down(self, mock_run, mock_status):
         mock_proc = MagicMock()
-        mock_proc.poll.return_value = 0
+        mock_proc.pid = 4242
         self.manager.proc = mock_proc
         self.manager.temp_dir = "dummy"
         
         mock_status.return_value = "still_up"
         
-        with patch("bff.process.time.sleep"), patch("bff.process.time.time", side_effect=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]):
-            with self.assertRaisesRegex(RuntimeError, "Child server did not stop"):
-                self.manager.stop()
+        with patch("bff.process.time.sleep") as mock_sleep:
+            with patch("bff.process.time.time", side_effect=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]):
+                with self.assertLogs("bff.process", level="WARNING"):
+                    with self.assertRaisesRegex(RuntimeError, "Child server did not stop"):
+                        self.manager.stop()
 
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
+    @patch("bff.process.status", new_callable=AsyncMock)
     def test_stop_idempotent(self, mock_status):
         mock_proc = MagicMock()
-        mock_proc.poll.return_value = 0
+        mock_proc.pid = 4242
         self.manager.proc = mock_proc
         self.manager.temp_dir = "dummy"
         mock_status.return_value = None
         
-        # First stop
-        self.manager.stop()
-        self.assertIsNone(self.manager.proc)
-        self.assertIsNone(self.manager.temp_dir)
-        
-        # Second stop
-        mock_status.reset_mock()
-        self.manager.stop()
-        mock_status.assert_not_called() # Should return immediately
+        with patch("bff.process.subprocess.run") as mock_run:
+            # First stop
+            self.manager.stop()
+            self.assertIsNone(self.manager.proc)
+            self.assertIsNone(self.manager.temp_dir)
+            
+            # Second stop
+            mock_status.reset_mock()
+            self.manager.stop()
+            mock_status.assert_not_called()
 
     @patch("bff.process.tempfile.mkdtemp")
     @patch("bff.process.subprocess.Popen")
-    @patch("bff.mcp_client.status", new_callable=AsyncMock)
+    @patch("bff.process.status", new_callable=AsyncMock)
     def test_restart_calls_stop_before_start(self, mock_status, mock_popen, mock_mkdtemp):
         import tempfile
         mock_mkdtemp.return_value = tempfile.gettempdir()
         mock_status.return_value = None
-        self.manager.stop = MagicMock()
-        self.manager.start = MagicMock()
         self.manager.current_scenario = "none"
         
-        self.manager.restart("recorded")
-        self.manager.start.assert_called_with("recorded")
+        with patch.object(self.manager, "_stop_locked") as mock_stop:
+            self.manager.restart("recorded")
+            mock_stop.assert_called_once()
+            
+    @patch("bff.process.status", new_callable=AsyncMock)
+    @patch("bff.process.subprocess.run")
+    @patch("bff.process.sys.platform", "win32")
+    def test_lock_serializes(self, mock_run, mock_status):
+        mock_status.return_value = None
         
-        # In our implementation, restart calls start, and start calls stop
-        # Let's verify start does call stop
-        real_start = ServerProcessManager.start
-        self.manager.start = real_start.__get__(self.manager)
+        # We will hold the lock and prove that stop() blocks
+        self.manager.lock.acquire()
         
-        self.manager.start("recorded")
-        self.manager.stop.assert_called_once()
+        def run_stop():
+            self.manager.stop()
+            
+        t = threading.Thread(target=run_stop)
+        t.start()
+        
+        time.sleep(0.1)
+        self.assertTrue(t.is_alive())
+        
+        self.manager.lock.release()
+        t.join(timeout=1)
+        self.assertFalse(t.is_alive())

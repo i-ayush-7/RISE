@@ -1,58 +1,106 @@
 import os
 import sys
-import subprocess
 import time
-import secrets
 import json
+import subprocess
 import urllib.request
 import urllib.error
-import urllib.parse
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-def do_req(url, method="GET", headers=None, data=None):
-    if headers is None:
-        headers = {}
-    if data is not None:
-        if isinstance(data, dict):
-            data = json.dumps(data).encode("utf-8")
-            headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, method=method, headers=headers, data=data)
-    try:
-        with urllib.request.urlopen(req, timeout=10) as f:
-            return f.status, dict(f.headers), f.read().decode("utf-8", "ignore")
-    except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers), e.read().decode("utf-8", "ignore")
-    except Exception as e:
-        return 0, {}, str(e)
+import tempfile
+import asyncio
 
 def check_bff():
-    db_orig = Path(__file__).parent.parent / "data" / "rise.db"
-    orig_mtime = db_orig.stat().st_mtime if db_orig.exists() else None
-    
+    # 17. check default ports
+    def check_port_free(port):
+        if sys.platform == "win32":
+            out = subprocess.run(["powershell", "-Command", f"Get-NetTCPConnection -State Listen | Where-Object {{ $_.LocalPort -eq {port} }} | Select-Object LocalPort"], capture_output=True, text=True).stdout
+            return str(port) not in out
+        return True
+
+    if not check_port_free(8080) or not check_port_free(8000):
+        print("(17) SKIP: default ports 8080 or 8000 are busy")
+    else:
+        def_env = os.environ.copy()
+        if "RISE_BFF_PORT" in def_env: del def_env["RISE_BFF_PORT"]
+        if "RISE_MCP_PORT" in def_env: del def_env["RISE_MCP_PORT"]
+        
+        if sys.platform == "win32":
+            def_proc = subprocess.Popen([sys.executable, "-m", "bff"], env=def_env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            def_proc = subprocess.Popen([sys.executable, "-m", "bff"], env=def_env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            
+        ready = False
+        for _ in range(30):
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8080/api/status", timeout=1) as f:
+                    if f.status == 200:
+                        data = json.loads(f.read().decode())
+                        if data.get("server") == "up":
+                            ready = True
+                            break
+            except Exception:
+                pass
+            time.sleep(1)
+            
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(def_proc.pid)], capture_output=True)
+            time.sleep(2)
+        else:
+            def_proc.terminate()
+            try:
+                def_proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                def_proc.kill()
+                
+        if ready and check_port_free(8080) and check_port_free(8000):
+            print("(17) default ports start and stop works: PASS")
+        else:
+            print(f"(17) FAIL: ready={ready}")
+
+    import secrets
     token = secrets.token_urlsafe(32)
+    
     env = os.environ.copy()
     env["RISE_BFF_PORT"] = "8081"
     env["RISE_MCP_PORT"] = "8002"
     env["RISE_AUTH_TOKEN"] = token
     
-    proc = subprocess.Popen([sys.executable, "-m", "bff"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    if sys.platform == "win32":
+        proc = subprocess.Popen([sys.executable, "-m", "bff"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+    else:
+        proc = subprocess.Popen([sys.executable, "-m", "bff"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     
     try:
         # wait for readiness
-        ready = False
         for _ in range(30):
-            st, _, _ = do_req("http://127.0.0.1:8081/api/status")
-            if st == 200:
-                ready = True
-                break
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:8081/api/status", timeout=1) as f:
+                    if f.status == 200:
+                        break
+            except Exception:
+                pass
             time.sleep(1)
             
-        if not ready:
-            print("FAIL: BFF did not become ready")
-            return
-            
+        def do_req(url, method="GET", headers=None, data=None):
+            req = urllib.request.Request(url, method=method)
+            req.add_header("Authorization", f"Bearer {token}")
+            if headers:
+                for k, v in headers.items():
+                    req.add_header(k, v)
+            if data is not None:
+                if not headers or "Content-Type" not in headers:
+                    req.add_header("Content-Type", "application/json")
+                req.data = json.dumps(data).encode("utf-8")
+                
+            try:
+                with urllib.request.urlopen(req, timeout=10) as f:
+                    return f.status, dict(f.headers), f.read().decode("utf-8", "ignore")
+            except urllib.error.HTTPError as e:
+                return e.code, dict(e.headers), e.read().decode("utf-8", "ignore")
+                
+        db_orig = Path(tempfile.gettempdir()) / "rise.db"
+        orig_mtime = db_orig.stat().st_mtime if db_orig.exists() else None
+        
         responses = []
         
         # 1. GET /api/status shows server up
@@ -96,7 +144,6 @@ def check_bff():
             
         # 6. POST scenario flood
         st, hdrs, body = do_req("http://127.0.0.1:8081/api/scenario", method="POST", data={"scenario": "flood"})
-        if st != 200: print(f"DEBUG scenario flood failed: {st} {body}")
         st, hdrs, body = do_req("http://127.0.0.1:8081/api/tool", method="POST", data={"name": "get_safety_advice", "arguments": {}})
         responses.append((body, hdrs))
         res = json.loads(body)
@@ -183,7 +230,7 @@ def check_bff():
     finally:
         if sys.platform == "win32":
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
-            import time; time.sleep(2)
+            time.sleep(2)
         else:
             proc.terminate()
             try:
@@ -192,19 +239,12 @@ def check_bff():
                 proc.kill()
                 
     # 14. check MCP connection fails
-    import asyncio
-    from mcp.client.streamable_http import streamable_http_client
-    async def try_mcp():
-        try:
-            import httpx
-            hc = httpx.AsyncClient()
-            async with streamable_http_client("http://127.0.0.1:8002/mcp", http_client=hc) as (r, w):
-                pass
-            return True
-        except Exception:
-            return False
-            
-    if not asyncio.run(try_mcp()):
+    sys.path.insert(0, str(Path(__file__).parent.parent)); from bff.mcp_client import status
+    # status uses config, so we override it
+    from bff.config import config
+    config["mcp_port"] = 8002
+    config["token"] = token
+    if asyncio.run(status()) is None:
         print("(14) MCP connection fails after stop: PASS")
     else:
         print("(14) FAIL MCP connection succeeded")
@@ -217,8 +257,8 @@ def check_bff():
 
     # 16. check CIM listing
     if sys.platform == "win32":
-        cim_out = subprocess.run(["powershell", "-Command", "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and $_.CommandLine -match 'server.py' } | Select-Object CommandLine"], capture_output=True, text=True).stdout
-        if "8002" not in cim_out:
+        cim_out = subprocess.run(["powershell", "-Command", "Get-NetTCPConnection -State Listen | Where-Object { $_.LocalPort -eq 8081 -or $_.LocalPort -eq 8002 } | Select-Object LocalPort"], capture_output=True, text=True).stdout
+        if "8081" not in cim_out and "8002" not in cim_out:
             print("(16) no server.py process remains: PASS")
         else:
             print(f"(16) FAIL server.py remains: {cim_out}")

@@ -71,6 +71,12 @@ class TestNWS(unittest.TestCase):
                     if node.module:
                         base_mod = node.module.split('.')[0]
                         self.assertNotIn(base_mod, allowed_imports, f"{py_file.name} illegally imports {node.module}")
+                        
+            # Check for hard-coded ports in bff
+            if "bff" in str(py_file) and py_file.name != "config.py":
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                        self.assertNotIn(node.value, ["8000", "8002", "8080", "8081"], f"{py_file.name} contains hard-coded port {node.value}")
 
     def test_datetime_filtering(self):
         import datetime

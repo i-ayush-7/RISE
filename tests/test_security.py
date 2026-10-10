@@ -230,7 +230,8 @@ class TestSecurity(unittest.IsolatedAsyncioTestCase):
     def test_source_checks(self):
         # 18. Source checks: server.py contains no "0.0.0.0"
         server_py = os.path.join(os.path.dirname(__file__), "..", "server.py")
-        content = open(server_py, "r", encoding="utf-8").read()
+        with open(server_py, "r", encoding="utf-8") as f:
+            content = f.read()
         self.assertNotIn("0.0.0.0", content)
         self.assertIn("DEMO MODE", content)
         
@@ -239,7 +240,8 @@ class TestSecurity(unittest.IsolatedAsyncioTestCase):
         for f in glob.glob(os.path.join(os.path.dirname(__file__), "..", "**", "*.py"), recursive=True):
             if "venv" in f or "test_security.py" in f:
                 continue
-            f_content = open(f, "r", encoding="utf-8").read()
+            with open(f, "r", encoding="utf-8") as fl:
+                f_content = fl.read()
             # simple check for token = "..."
             import re
             m = re.search(r'token\s*=\s*["\']([a-zA-Z0-9_-]{32,})["\']', f_content)

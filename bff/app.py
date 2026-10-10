@@ -74,11 +74,13 @@ async def post_scenario(request: Request):
     if scenario not in SCENARIOS:
         return JSONResponse({"ok": False, "error": "Unknown scenario"}, status_code=400)
         
-    manager.restart(scenario)
+    import asyncio
+    await asyncio.to_thread(manager.restart, scenario)
     return JSONResponse({"scenario": scenario})
 
 async def post_reset(request: Request):
-    manager.reset()
+    import asyncio
+    await asyncio.to_thread(manager.reset)
     return JSONResponse({"ok": True})
 
 async def post_skip_time(request: Request):
@@ -157,6 +159,8 @@ class BFFSecurityMiddleware:
                     
         body_size = 0
         body_too_large = False
+        response_started = False
+        class PayloadTooLarge(BaseException): pass
 
         async def wrapped_receive():
             nonlocal body_size, body_too_large
@@ -165,10 +169,13 @@ class BFFSecurityMiddleware:
                 body_size += len(message.get("body", b""))
                 if body_size > 16384:
                     body_too_large = True
+                    raise PayloadTooLarge()
             return message
 
         async def wrapped_send(message):
+            nonlocal response_started
             if message["type"] == "http.response.start":
+                response_started = True
                 headers = list(message.get("headers", []))
                 headers.append((b"content-security-policy", b"default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"))
                 headers.append((b"x-content-type-options", b"nosniff"))
@@ -180,11 +187,17 @@ class BFFSecurityMiddleware:
 
         try:
             await self.app(scope, wrapped_receive, wrapped_send)
+        except BaseException as e:
+            if e.__class__.__name__ == 'PayloadTooLarge':
+                logger.warning('Rejected request due to oversize body (chunked)')
+                if not response_started:
+                    await self._send_plain(send, 413, 'Payload Too Large')
+            else:
+                raise
+            logger.warning("Rejected request due to oversize body (chunked)")
+            if not response_started:
+                await self._send_plain(send, 413, "Payload Too Large")
         except Exception:
-            if body_too_large:
-                logger.warning("Rejected request due to oversize body (chunked)")
-                # It's usually too late to send 413 if app already started sending response, but we can try
-                pass
             raise
 
     async def _send_plain(self, send, status, text):
@@ -210,7 +223,8 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app):
     yield
-    manager.stop()
+    import asyncio
+    await asyncio.to_thread(manager.stop)
 
 routes = [
     Route("/api/status", get_status),

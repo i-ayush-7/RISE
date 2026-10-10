@@ -14,9 +14,11 @@ class TestBFF(unittest.TestCase):
             self.assertEqual(cfg["nws_point"], "34.0522,-118.2437")
 
     def test_process_env(self):
+        from unittest.mock import patch, MagicMock, AsyncMock
         from bff.process import ServerProcessManager
         import subprocess
-        mgr = ServerProcessManager()
+        with patch('atexit.register'):
+              mgr = ServerProcessManager()
         
         with patch("subprocess.Popen") as mock_popen, patch("subprocess.run"):
             mock_popen.return_value = MagicMock()
@@ -34,7 +36,14 @@ class TestBFF(unittest.TestCase):
         self.assertTrue(os.path.isabs(env["RISE_DEMO_CLOCK_FILE"]))
         self.assertEqual(env["RISE_ALERT_SOURCE"], "fixture")
         self.assertEqual(env["RISE_FIXTURE_SCENARIO"], "flood_warning")
-        mgr.stop()
+        
+        if mgr.log_file:
+            mgr.log_file.close()
+            mgr.log_file = None
+        from unittest.mock import patch, AsyncMock
+        with patch("bff.process.status", new_callable=AsyncMock) as mock_status, patch("time.sleep"):
+            mock_status.return_value = None
+            mgr.stop()
         
     def test_client_allowlist(self):
         from bff.mcp_client import call_tool
@@ -113,25 +122,25 @@ class TestBFF(unittest.TestCase):
         
         # POST good origin
         scope["method"] = "POST"
-        scope["path"] = "/api/reset"
+        scope["path"] = "/api/tool"
         scope["headers"] = [(b"host", b"127.0.0.1:8080"), (b"origin", b"http://127.0.0.1:8080"), (b"content-type", b"application/json")]
         with patch("bff.app.manager.reset"):
-            start, body = asyncio.run(self.run_asgi(app, scope, b"{}"))
+            start, body = asyncio.run(self.run_asgi(app, scope, b'{"name": "ping"}'))
             self.assertEqual(start["status"], 200)
             
         # POST bad origin
         scope["headers"] = [(b"host", b"127.0.0.1:8080"), (b"origin", b"http://evil.com"), (b"content-type", b"application/json")]
-        start, body = asyncio.run(self.run_asgi(app, scope, b"{}"))
+        start, body = asyncio.run(self.run_asgi(app, scope, b'{"name": "ping"}'))
         self.assertEqual(start["status"], 403)
         
         # POST bad content type
         scope["headers"] = [(b"host", b"127.0.0.1:8080"), (b"content-type", b"text/plain")]
-        start, body = asyncio.run(self.run_asgi(app, scope, b"{}"))
+        start, body = asyncio.run(self.run_asgi(app, scope, b'{"name": "ping"}'))
         self.assertEqual(start["status"], 415)
         
         # POST oversize
         scope["headers"] = [(b"host", b"127.0.0.1:8080"), (b"content-type", b"application/json"), (b"content-length", b"20000")]
-        start, body = asyncio.run(self.run_asgi(app, scope, b"{}"))
+        start, body = asyncio.run(self.run_asgi(app, scope, b'{"name": "ping"}'))
         self.assertEqual(start["status"], 413)
 
     def test_app_status(self):
@@ -183,9 +192,6 @@ class TestBFF(unittest.TestCase):
         start, body = asyncio.run(self.run_asgi(app, scope))
         self.assertTrue(start["status"] in (403, 404))
         
-if __name__ == "__main__":
-    unittest.main()
-
     def test_source_checks(self):
         import ast
         from pathlib import Path
@@ -213,3 +219,35 @@ if __name__ == "__main__":
                                                 
         from bff.config import config
         self.assertNotIn("token", config["token"]) # just sanity checking no literal "token" is the token
+
+
+    def test_chunked_under_limit(self):
+        import asyncio
+        from bff.app import app
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/tool",
+            "headers": [(b"host", b"127.0.0.1:8080"), (b"origin", b"http://127.0.0.1:8080"), (b"content-type", b"application/json")]
+        }
+        with patch("bff.app.manager.reset"):
+            start, body = asyncio.run(self.run_asgi(app, scope, b'{"name": "ping"}'))
+            self.assertEqual(start["status"], 200)
+
+    def test_chunked_over_limit(self):
+        import asyncio
+        from bff.app import app
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/tool",
+            "headers": [(b"host", b"127.0.0.1:8080"), (b"origin", b"http://127.0.0.1:8080"), (b"content-type", b"application/json")]
+        }
+        # oversize payload without content-length
+        large_body = b"{" + b'"a":"' + b"A"*17000 + b'"}'
+        start, body = asyncio.run(self.run_asgi(app, scope, large_body))
+        self.assertEqual(start["status"], 413)
+
+
+if __name__ == "__main__":
+    unittest.main()
