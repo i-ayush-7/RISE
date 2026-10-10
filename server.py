@@ -113,10 +113,11 @@ if __name__ == "__main__":
     )
     
     auth_on = "on" if config["token"] is not None else "off"
-    print("Binding to 127.0.0.1:8000")
+    port = int(os.environ.get("RISE_MCP_PORT", 8000))
+    print(f"Binding to 127.0.0.1:{port}")
     print(f"Auth: {auth_on}")
     print(f"Allowed hosts: {', '.join(config['allowed_hosts'])}")
     if config.get("demo_mode"):
         print("DEMO MODE: simulated clock enabled (local only)")
     
-    uvicorn.run(wrapped_app, host="127.0.0.1", port=8000, access_log=True)
+    uvicorn.run(wrapped_app, host="127.0.0.1", port=port, access_log=True)

@@ -23,6 +23,11 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Web Interface
+
+Start the backend for frontend (BFF): `python -m bff`
+Open your browser to http://127.0.0.1:8080
+
 ## Running the Server
 
 Start the server using Python. It will run on `http://127.0.0.1:8000/mcp` using the **Streamable HTTP transport**.

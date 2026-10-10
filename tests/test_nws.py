@@ -56,8 +56,8 @@ class TestNWS(unittest.TestCase):
         base = Path(__file__).parent.parent
         allowed_imports = {"urllib", "http", "socket", "ssl", "requests", "httpx"}
         
-        for py_file in (list((base / "rise").rglob("*.py")) + list((base / "scripts").rglob("*.py"))):
-            if py_file.name in ("nws.py", "record_nws.py", "check_security.py", "check_demo_clock.py"):
+        for py_file in (list((base / "rise").rglob("*.py")) + list((base / "scripts").rglob("*.py")) + list((base / "bff").rglob("*.py"))):
+            if py_file.name in ("nws.py", "record_nws.py", "check_security.py", "check_demo_clock.py", "check_bff.py"):
                 continue
             with open(py_file, "r", encoding="utf-8") as f:
                 tree = ast.parse(f.read(), filename=str(py_file))

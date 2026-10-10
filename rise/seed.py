@@ -8,13 +8,10 @@ def seed_data(db_path: Path = DEFAULT_DB_PATH):
     init_db(db_path)
     repo = Repository(db_path)
     
-    print("Creating household...")
     household = repo.create_household(
         name="The Rivera Family",
         address_note="123 Fictional Lane, Springfield (Blue house with white trim)"
     )
-    
-    print(f"Created household with ID: {household.id}")
     
     # 5 Members
     members = [
@@ -46,9 +43,11 @@ def seed_data(db_path: Path = DEFAULT_DB_PATH):
     for p in points:
         repo.add_meeting_point(p)
         
-    print("\nHousehold Summary:")
-    summary = repo.get_household_summary(household.id)
-    pprint.pprint(summary)
+    return repo.get_household_summary(household.id)
 
 if __name__ == "__main__":
-    seed_data()
+    print("Creating household...")
+    summary = seed_data()
+    print(f"Created household with ID: {summary['id']}\n")
+    print("Household Summary:")
+    pprint.pprint(summary)
