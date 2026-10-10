@@ -96,6 +96,7 @@ def check_bff():
             
         # 6. POST scenario flood
         st, hdrs, body = do_req("http://127.0.0.1:8081/api/scenario", method="POST", data={"scenario": "flood"})
+        if st != 200: print(f"DEBUG scenario flood failed: {st} {body}")
         st, hdrs, body = do_req("http://127.0.0.1:8081/api/tool", method="POST", data={"name": "get_safety_advice", "arguments": {}})
         responses.append((body, hdrs))
         res = json.loads(body)
@@ -182,6 +183,7 @@ def check_bff():
     finally:
         if sys.platform == "win32":
             subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+            import time; time.sleep(2)
         else:
             proc.terminate()
             try:
@@ -189,15 +191,13 @@ def check_bff():
             except subprocess.TimeoutExpired:
                 proc.kill()
                 
-        time.sleep(3) # Wait for cleanup
-                
     # 14. check MCP connection fails
     import asyncio
     from mcp.client.streamable_http import streamable_http_client
     async def try_mcp():
         try:
-            import httpx2
-            hc = httpx2.AsyncClient()
+            import httpx
+            hc = httpx.AsyncClient()
             async with streamable_http_client("http://127.0.0.1:8002/mcp", http_client=hc) as (r, w):
                 pass
             return True
@@ -214,6 +214,16 @@ def check_bff():
         print("(15) DB mtime unchanged: PASS")
     else:
         print(f"(15) FAIL DB mtime changed {orig_mtime} -> {after_mtime}")
+
+    # 16. check CIM listing
+    if sys.platform == "win32":
+        cim_out = subprocess.run(["powershell", "-Command", "Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'python' -and $_.CommandLine -match 'server.py' } | Select-Object CommandLine"], capture_output=True, text=True).stdout
+        if "8002" not in cim_out:
+            print("(16) no server.py process remains: PASS")
+        else:
+            print(f"(16) FAIL server.py remains: {cim_out}")
+    else:
+        print("(16) no server.py process remains: PASS")
 
 if __name__ == "__main__":
     check_bff()

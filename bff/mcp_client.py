@@ -83,6 +83,8 @@ async def call_tool(name: str, arguments: dict) -> Tuple[bool, Any, Optional[str
             if "unhandled errors in a TaskGroup" in str(e) and result is not None:
                 pass
             else:
+                import traceback
+                traceback.print_exc()
                 return False, str(e), None
                 
         return result

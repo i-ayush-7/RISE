@@ -549,7 +549,8 @@ class TestToolsEndToEnd(unittest.TestCase):
             raise sqlite3.IntegrityError("UNIQUE constraint failed: incidents.household_id CHECK")
             
         with self.assertRaises(rise.tools.ToolError) as ctx:
-            fail()
+            with self.assertLogs("rise.tools", level="ERROR"):
+                fail()
             
         msg = str(ctx.exception).lower()
         self.assertNotIn("select", msg)

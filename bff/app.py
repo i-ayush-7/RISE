@@ -205,6 +205,13 @@ class BFFSecurityMiddleware:
             "body": body
         })
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    manager.stop()
+
 routes = [
     Route("/api/status", get_status),
     Route("/api/tool", post_tool, methods=["POST"]),
@@ -215,4 +222,5 @@ routes = [
     Mount("/", app=StaticFiles(directory=str(Path(__file__).parent.parent / "web"), html=True), name="static")
 ]
 
-app = BFFSecurityMiddleware(Starlette(routes=routes, middleware=[]))
+app_starlette = Starlette(routes=routes, middleware=[], lifespan=lifespan)
+app = BFFSecurityMiddleware(app_starlette)

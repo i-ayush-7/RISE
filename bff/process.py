@@ -5,6 +5,7 @@ import time
 import tempfile
 import shutil
 import atexit
+import signal
 from pathlib import Path
 from typing import Optional
 from bff.config import config
@@ -40,18 +41,25 @@ class ServerProcessManager:
             subprocess.run([sys.executable, "-m", "rise.seed"], env=env, cwd=str(Path(__file__).parent.parent), capture_output=True, check=True)
 
     def _wait_for_ready(self):
-        from bff.mcp_client import status
-        import asyncio
+        import time
+        import urllib.request
+        import urllib.error
+        from pathlib import Path
         start_t = time.time()
         while time.time() - start_t < 15:
             if self.proc and self.proc.poll() is not None:
-                raise RuntimeError("Server process exited prematurely")
+                log_content = ""
+                if self.temp_dir:
+                    p = Path(self.temp_dir) / "server.log"
+                    if p.exists():
+                        log_content = p.read_text()
+                raise RuntimeError(f"Server process exited prematurely: {log_content}")
             try:
-                res = asyncio.run(status())
-                if res is not None:
-                    return
-            except Exception:
-                pass
+                urllib.request.urlopen("http://127.0.0.1:8002/mcp", timeout=0.5)
+            except urllib.error.HTTPError:
+                return # Server is UP and returned HTTP status
+            except Exception as e:
+                pass # Server is down or didn't respond in time
             time.sleep(0.5)
         raise RuntimeError("Timed out waiting for MCP server")
 
@@ -80,12 +88,19 @@ class ServerProcessManager:
         log_path = Path(self.temp_dir) / "server.log"
         self.log_file = open(log_path, "w")
         
+        kwargs = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["start_new_session"] = True
+
         self.proc = subprocess.Popen(
             [sys.executable, "server.py"],
             env=env,
             cwd=str(Path(__file__).parent.parent),
             stdout=self.log_file,
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
+            **kwargs
         )
         self._wait_for_ready()
 
@@ -96,29 +111,63 @@ class ServerProcessManager:
         
     def reset(self):
         self.stop()
-        if self.temp_dir and Path(self.temp_dir).exists():
-            shutil.rmtree(self.temp_dir, ignore_errors=True)
-        self.temp_dir = None
         self.start(self.current_scenario)
 
     def stop(self):
+        if not self.proc and not self.temp_dir:
+            return
+            
         if self.proc:
-            if self.proc.poll() is None:
-                self.proc.terminate()
+            pid = self.proc.pid
+            if sys.platform == "win32":
+                try:
+                    res = subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False, timeout=10)
+                    if res.returncode != 0:
+                        print(f"Taskkill failed: {res.stderr.decode()}", file=sys.stderr)
+                    time.sleep(1.5)
+                except subprocess.TimeoutExpired:
+                    pass
+                else:
+                    try:
+                        pgid = os.getpgid(pid)
+                        sigterm = getattr(signal, "SIGTERM", 15)
+                        sigkill = getattr(signal, "SIGKILL", 9)
+                        os.killpg(pgid, sigterm)
+                        time.sleep(3)
+                        if self.proc.poll() is None:
+                            os.killpg(pgid, sigkill)
+                    except Exception:
+                        pass
                 try:
                     self.proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    if sys.platform == "win32":
-                        subprocess.run(["taskkill", "/F", "/T", "/PID", str(self.proc.pid)], capture_output=True)
-                    else:
-                        self.proc.kill()
+                    pass
             self.proc = None
+
         if self.log_file:
             self.log_file.close()
             self.log_file = None
 
-    def cleanup(self):
-        self.stop()
+        from bff.mcp_client import status
+        import asyncio
+        start_t = time.time()
+        while time.time() - start_t < 5:
+            if self.proc is None or self.proc.poll() is not None:
+                # wait until port is freed
+                try:
+                    import urllib.request
+                    import urllib.error
+                    urllib.request.urlopen("http://127.0.0.1:8002/mcp", timeout=0.5)
+                except urllib.error.HTTPError:
+                    pass # Server is UP
+                except Exception as e:
+                    break # Server is down!
+            time.sleep(0.5)
+        else:
+            import logging
+            logging.getLogger(__name__).warning("Server still reachable after stop")
+            raise RuntimeError("Child server did not stop")
+
         if self.temp_dir and Path(self.temp_dir).exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)
         self.temp_dir = None
