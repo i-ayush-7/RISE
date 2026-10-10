@@ -320,6 +320,48 @@ def check_bff():
                 print("(27) no token leaked in chat: PASS")
             else:
                 print("(27) no token leaked in chat: FAIL")
+
+            urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8080/api/reset", method="POST", headers={"Origin": "http://127.0.0.1:8080", "Content-Type": "application/json"}), data=b"{}")
+            post_chat("Start a check-in")
+            
+            res28 = post_chat("I think Maria is safe")
+            if get_member_status("Maria Rivera") == "pending":
+                print("(28) I think Maria is safe (hedge) -> pending: PASS")
+            else:
+                print("(28) hedge -> pending: FAIL", res28)
+                
+            res29 = post_chat("Maria is safe but Elena is not")
+            if get_member_status("Maria Rivera") == "pending" and get_member_status("Elena Rivera") == "pending":
+                print("(29) multiple names with negation -> pending: PASS")
+            else:
+                print("(29) multiple names with negation -> pending: FAIL", res29)
+                
+            res30 = post_chat("Maria is not hurt")
+            st30 = get_status()
+            has_needs = False
+            for m in st30.get("members", []):
+                if m["status"] == "needs_help":
+                    has_needs = True
+            if not has_needs:
+                print("(30) Maria is not hurt -> nobody needs_help: PASS")
+            else:
+                print("(30) Maria is not hurt -> nobody needs_help: FAIL", res30)
+                
+            res31 = post_chat("Is everyone safe?")
+            if "I only record" not in res31["reply"] and st30.get("speakable", "") in res31["reply"]:
+                print("(31) Is everyone safe -> status speakable: PASS")
+            else:
+                print("(31) Is everyone safe -> status speakable: FAIL", res31)
+                
+            res32 = post_chat("Carlos says Maria is safe")
+            if get_member_status("Carlos Rivera") == "pending" and get_member_status("Maria Rivera") == "pending":
+                print("(32) attribution hedge -> pending: PASS")
+            else:
+                print("(32) attribution hedge -> pending: FAIL", res32)
+                
+            if "token" not in str(res28).lower() and "token" not in str(res32).lower():
+                print("(33) no token leaked in new checks: PASS")
+
         finally:
             if sys.platform == "win32":
                 subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc2.pid)], capture_output=True)

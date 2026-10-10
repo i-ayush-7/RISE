@@ -153,6 +153,31 @@ async def handle_chat(text: str, run_tool) -> dict:
         fn = names[0].split()[0] if names else "Someone"
         reply = f'Do you want me to mark {joined} as needing help? Say it plainly, for example "{fn} needs help".'
         
+    elif intent == "confirm_needed":
+        names = intent_data.get("names", [])
+        joined = " and ".join(names)
+        fn = names[0].split()[0] if names else "Someone"
+        hint = intent_data.get("hint_status")
+        if hint == "needs_help":
+            adjective = "needing help"
+            example = f'"{fn} needs help"'
+        elif hint == "not_responding":
+            adjective = "not responding"
+            example = f'"{fn} isn\'t answering"'
+        else:
+            adjective = "safe"
+            example = f'"{fn} is safe"'
+        reply = f'I only record clear statements about what is true right now. If you want me to mark {joined} as {adjective}, say it plainly, for example {example}.'
+        
+    elif intent == "clarify_negated":
+        names = intent_data.get("names", [])
+        joined = " and ".join(names)
+        fn = names[0].split()[0] if names else "Someone"
+        reply = f'I\'m not sure what you mean about {joined}. Tell me plainly, for example "{fn} is safe" or "{fn} needs help".'
+        
+    elif intent == "clarify_multiple":
+        reply = 'Please tell me one status at a time, for example "Maria is safe" and then "Elena needs help".'
+        
     elif intent == "clarify_one_person":
         reply = "Please tell me about one person at a time when someone needs help."
         
