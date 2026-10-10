@@ -28,6 +28,13 @@ async def get_status(request: Request):
         "bff": "ok"
     })
 
+async def run_tool(name, arguments):
+    start_t = time.time()
+    ok, res_payload, _ = await call_tool(name, arguments)
+    ms = int((time.time() - start_t) * 1000)
+    activity_log.add(name, arguments, ok, ms, res_payload)
+    return ok, res_payload, ms
+
 async def post_tool(request: Request):
     try:
         body = await request.json()
@@ -39,19 +46,11 @@ async def post_tool(request: Request):
     if not name:
         return JSONResponse({"ok": False, "error": "Missing tool name"}, status_code=400)
         
-    start_t = time.time()
-    ok, res_payload, _ = await call_tool(name, arguments)
-    ms = int((time.time() - start_t) * 1000)
-    
-    activity_log.add(name, arguments, ok, ms, res_payload)
+    ok, res_payload, ms = await run_tool(name, arguments)
     
     if ok:
         return JSONResponse({"ok": True, "result": res_payload, "ms": ms})
     else:
-        # Errors from MCP tool calls (ok=False from client side checking or tool execution error)
-        # Note: instructions say "MCP tool errors return 200 with ok false and the server's error text."
-        # If it was rejected by our own check, also return 200 or 400? 
-        # "400 for unknown tool or bad body; MCP tool errors return 200 with ok false"
         if res_payload in ("Tool " + name + " not in allowlist", "Arguments must be a JSON object", "Too many arguments (max 20)") or (isinstance(res_payload, str) and res_payload.startswith("Argument ") and "too long" in res_payload):
             return JSONResponse({"ok": False, "error": res_payload}, status_code=400)
         return JSONResponse({"ok": False, "error": res_payload}, status_code=200)
@@ -95,6 +94,48 @@ async def post_skip_time(request: Request):
         
     new_val = manager.add_offset(minutes)
     return JSONResponse({"clock_offset_minutes": new_val})
+
+
+async def post_chat(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Invalid JSON"}, status_code=400)
+        
+    text = body.get("text")
+    if not isinstance(text, str):
+        return JSONResponse({"ok": False, "error": "text must be a string"}, status_code=400)
+        
+    import unicodedata
+    import re
+    chars = []
+    for c in text:
+        cat = unicodedata.category(c)
+        if cat in ("Cc", "Cf"):
+            if c in ("\n", "\r", "\t"):
+                chars.append(" ")
+        else:
+            chars.append(c)
+            
+    cleaned = "".join(chars)
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+    if len(cleaned) > 200:
+        return JSONResponse({"ok": False, "error": "Please type a short message (up to 200 characters)."}, status_code=400)
+
+    from bff.chat import handle_chat
+    res = await handle_chat(text, run_tool)
+    if res.get("intent") == "invalid":
+        return JSONResponse({"ok": False, "error": res["reply"]}, status_code=400)
+        
+    # Chat tool calls appear in the activity log like any other. 
+    # But wait, run_tool inside handle_chat logs the tool calls!
+    # Does post_chat log anything itself?
+    # "Chat tool calls appear in the activity log like any other."
+    # Since handle_chat calls run_tool, run_tool will log each tool it calls.
+    # What about the chat itself? The prompt says "Chat tool calls appear in the activity log like any other." This might mean the *tools called during chat* appear, which they do via run_tool.
+        
+    return JSONResponse(res)
 
 class BFFSecurityMiddleware:
     def __init__(self, app):
@@ -233,6 +274,7 @@ routes = [
     Route("/api/scenario", post_scenario, methods=["POST"]),
     Route("/api/reset", post_reset, methods=["POST"]),
     Route("/api/demo/skip-time", post_skip_time, methods=["POST"]),
+    Route("/api/chat", post_chat, methods=["POST"]),
     Mount("/", app=StaticFiles(directory=str(Path(__file__).parent.parent / "web"), html=True), name="static")
 ]
 

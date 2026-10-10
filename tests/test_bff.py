@@ -249,5 +249,46 @@ class TestBFF(unittest.TestCase):
         self.assertEqual(start["status"], 413)
 
 
+
+    def test_chat_validation(self):
+        import asyncio
+        from bff.app import app
+        import json
+        
+        # bad Origin
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/chat",
+            "headers": [(b"host", b"127.0.0.1:8080"), (b"origin", b"http://evil.com"), (b"content-type", b"application/json")]
+        }
+        start, body = asyncio.run(self.run_asgi(app, scope, b"{}"))
+        self.assertEqual(start["status"], 403)
+        
+        # bad content-type
+        scope["headers"] = [(b"host", b"127.0.0.1:8080"), (b"origin", b"http://127.0.0.1:8080"), (b"content-type", b"text/plain")]
+        start, body = asyncio.run(self.run_asgi(app, scope, b'{"text": "hello"}'))
+        self.assertEqual(start["status"], 415)
+        
+        # missing text
+        scope["headers"] = [(b"host", b"127.0.0.1:8080"), (b"origin", b"http://127.0.0.1:8080"), (b"content-type", b"application/json")]
+        start, body = asyncio.run(self.run_asgi(app, scope, b'{}'))
+        self.assertEqual(start["status"], 400)
+        
+        # text too long
+        long_body = b'{"text": "' + b'A' * 201 + b'"}'
+        start, body = asyncio.run(self.run_asgi(app, scope, long_body))
+        self.assertEqual(start["status"], 400)
+        
+        # 200 shape
+        from unittest.mock import patch
+        with patch("bff.chat.handle_chat") as mock_handle:
+            async def fake_handle(*args):
+                return {"reply": "Hi", "intent": "help", "tools": [], "refresh": []}
+            mock_handle.side_effect = fake_handle
+            start, body = asyncio.run(self.run_asgi(app, scope, b'{"text": "hello"}'))
+            self.assertEqual(start["status"], 200)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -484,5 +484,37 @@ class TestNWS(unittest.TestCase):
         for alert in alerts:
             self.assertTrue(bool(alert.headline))
 
+
+    def test_intents_imports(self):
+        import ast
+        from pathlib import Path
+        py_file = Path(__file__).parent.parent / "bff" / "intents.py"
+        with open(py_file, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        
+        allowed = {"re", "unicodedata", "typing"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for name in node.names:
+                    self.assertIn(name.name.split(".")[0], allowed)
+            elif isinstance(node, ast.ImportFrom):
+                self.assertIn(node.module.split(".")[0], allowed)
+
+    def test_chat_imports(self):
+        import ast
+        from pathlib import Path
+        py_file = Path(__file__).parent.parent / "bff" / "chat.py"
+        with open(py_file, "r", encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+            
+        forbidden = {"urllib", "http", "socket", "ssl", "httpx"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for name in node.names:
+                    self.assertNotIn(name.name.split(".")[0], forbidden)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    self.assertNotIn(node.module.split(".")[0], forbidden)
+
 if __name__ == "__main__":
     unittest.main()
