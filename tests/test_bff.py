@@ -289,6 +289,60 @@ class TestBFF(unittest.TestCase):
             start, body = asyncio.run(self.run_asgi(app, scope, b'{"text": "hello"}'))
             self.assertEqual(start["status"], 200)
 
+    def test_static_serving_asgi(self):
+        import asyncio
+        from bff.app import app
+
+        def get_h(headers, name):
+            for k, v in headers:
+                if k.decode().lower() == name.lower():
+                    return v.decode()
+            return None
+
+        # 1. GET /
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [(b"host", b"127.0.0.1:8080")]
+        }
+        start, _ = asyncio.run(self.run_asgi(app, scope))
+        self.assertEqual(start["status"], 200)
+        ct = get_h(start["headers"], "content-type")
+        self.assertIn("text/html", ct)
+        cc = get_h(start["headers"], "cache-control")
+        self.assertIn("no-cache", cc)
+        csp = get_h(start["headers"], "content-security-policy")
+        self.assertIsNotNone(csp)
+
+        # 2. GET /css/app.css
+        scope["path"] = "/css/app.css"
+        start, _ = asyncio.run(self.run_asgi(app, scope))
+        self.assertEqual(start["status"], 200)
+        ct = get_h(start["headers"], "content-type")
+        self.assertIn("text/css", ct)
+        cc = get_h(start["headers"], "cache-control")
+        self.assertIn("no-cache", cc)
+
+        # 3. GET /js/main.js and /js/dom.js
+        for js_path in ["/js/main.js", "/js/dom.js"]:
+            scope["path"] = js_path
+            start, _ = asyncio.run(self.run_asgi(app, scope))
+            self.assertEqual(start["status"], 200)
+            ct = get_h(start["headers"], "content-type")
+            self.assertTrue(ct.startswith("text/javascript"), f"Expected text/javascript for {js_path}, got {ct}")
+            cc = get_h(start["headers"], "cache-control")
+            self.assertIn("no-cache", cc)
+
+        # 4. GET /api/status keeps no-store
+        scope["path"] = "/api/status"
+        with patch("bff.app.status", new_callable=AsyncMock) as mock_st:
+            mock_st.return_value = "2024-11-05"
+            start, _ = asyncio.run(self.run_asgi(app, scope))
+            self.assertEqual(start["status"], 200)
+            cc = get_h(start["headers"], "cache-control")
+            self.assertIn("no-store", cc)
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -25,8 +25,28 @@ pip install -r requirements.txt
 
 ## Web Interface
 
-Start the backend for frontend (BFF): `python -m bff`
-Open your browser to http://127.0.0.1:8080
+Start the backend for frontend (BFF):
+```bash
+python -m bff
+```
+Open your browser to `http://127.0.0.1:8080`.
+
+The web interface provides 6 dedicated views:
+- **Chat**: Live conversational assistant, situation summary, and hero status photo.
+- **Board**: Real-time check-in status, safety meter, and copy-ready escalation messages.
+- **Alerts**: Active emergency alerts and tailored safety advice tabs.
+- **Plan**: Read-only household roster, emergency contacts, and safe meeting points.
+- **Log**: MCP tool activity ledger showing calls, statuses, durations, and payloads.
+- **More**: Scenario switcher (floods, storms, heatwaves), demo state reset, and high-contrast / large text toggle.
+
+### Security Note
+The web page never holds or receives the backend bearer token. The browser connects only to its own origin (`/api/*`), and the BFF attaches authentication credentials server-side when proxying requests to the MCP server.
+
+### Accessibility & Navigation
+- **Skip Link**: Top-of-page "Skip to content" link allows immediate keyboard jumping to main views.
+- **Keyboard Navigation**: Standard `Tab` navigation for all interactive controls (minimum 44px touch/click target size).
+- **Tabbed Panels**: Arrow keys (`ArrowLeft`, `ArrowRight`) to cycle between tabs on the Alerts view.
+- **Screen Reader Announcements**: Live region (`#live-announcer`) announces view changes and dynamic updates.
 
 ## Running the Server
 

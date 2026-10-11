@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import re
 import subprocess
 import urllib.request
 import urllib.error
@@ -383,6 +384,44 @@ def check_bff():
                 print("(36) curly doesn't need help -> nobody needs_help: PASS")
             else:
                 print("(36) curly doesn't need help -> nobody needs_help: FAIL", res36)
+
+            # (37) GET /css/app.css is 200 with text/css
+            req37 = urllib.request.Request("http://127.0.0.1:8080/css/app.css")
+            with urllib.request.urlopen(req37) as resp37:
+                ct37 = resp37.headers.get("Content-Type", "")
+                if resp37.status == 200 and "text/css" in ct37:
+                    print("(37) GET /css/app.css is 200 text/css: PASS")
+                else:
+                    print("(37) GET /css/app.css FAIL", resp37.status, ct37)
+
+            # (38) GET /js/main.js is 200 with a javascript content type
+            req38 = urllib.request.Request("http://127.0.0.1:8080/js/main.js")
+            with urllib.request.urlopen(req38) as resp38:
+                ct38 = resp38.headers.get("Content-Type", "")
+                if resp38.status == 200 and "javascript" in ct38:
+                    print("(38) GET /js/main.js is 200 javascript: PASS")
+                else:
+                    print("(38) GET /js/main.js FAIL", resp38.status, ct38)
+
+            # (39) GET / is 200 and its body contains exactly one "<script" occurrence, that one being type="module" src="/js/main.js"
+            req39 = urllib.request.Request("http://127.0.0.1:8080/")
+            with urllib.request.urlopen(req39) as resp39:
+                body39 = resp39.read().decode("utf-8")
+                scripts39 = re.findall(r"<script\b[^>]*>", body39, re.IGNORECASE)
+                if resp39.status == 200 and len(scripts39) == 1 and 'type="module"' in scripts39[0] and 'src="/js/main.js"' in scripts39[0]:
+                    print("(39) GET / has exactly one module script: PASS")
+                else:
+                    print("(39) GET / script check FAIL", resp39.status, scripts39)
+
+            # (40) GET /js/views/home.js is 200 with a javascript content type
+            req40 = urllib.request.Request("http://127.0.0.1:8080/js/views/home.js")
+            with urllib.request.urlopen(req40) as resp40:
+                ct40 = resp40.headers.get("Content-Type", "")
+                if resp40.status == 200 and "javascript" in ct40:
+                    print("(40) GET /js/views/home.js is 200 javascript: PASS")
+                else:
+                    print("(40) GET /js/views/home.js FAIL", resp40.status, ct40)
+
 
         finally:
             if sys.platform == "win32":

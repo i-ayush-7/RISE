@@ -1,5 +1,6 @@
 import json
 import logging
+import mimetypes
 import time
 from pathlib import Path
 from starlette.applications import Starlette
@@ -8,6 +9,15 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/javascript", ".mjs")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("image/jpeg", ".jpg")
+mimetypes.add_type("image/jpeg", ".jpeg")
+mimetypes.add_type("image/png", ".png")
+mimetypes.add_type("application/json", ".json")
 
 from bff.config import config
 from bff.process import manager, SCENARIOS
@@ -223,6 +233,8 @@ class BFFSecurityMiddleware:
                 headers.append((b"referrer-policy", b"no-referrer"))
                 if scope["path"].startswith("/api/"):
                     headers.append((b"cache-control", b"no-store"))
+                else:
+                    headers.append((b"cache-control", b"no-cache"))
                 message["headers"] = headers
             await send(message)
 
