@@ -23,7 +23,8 @@ export function mount(container, store) {
   // Empty state container
   const emptyCard = h('div', { className: 'card' });
   emptyCard.appendChild(h('h2', {}, 'Family check-in'));
-  emptyCard.appendChild(h('p', { className: 'muted' }, 'No check-in is active. Start one to track who is safe.'));
+  const emptyP = h('p', { className: 'muted' }, 'No check-in is active. Start one to track who is safe.');
+  emptyCard.appendChild(emptyP);
   const startBtn = h('button', {
     type: 'button',
     className: 'btn pri',
@@ -325,6 +326,11 @@ export function mount(container, store) {
       const active = Boolean(checkin && checkin.active);
 
       if (!active) {
+        if (checkin && checkin.error && !checkin.error.includes('No check-in is active')) {
+          emptyP.textContent = checkin.error;
+        } else {
+          emptyP.textContent = 'No check-in is active. Start one to track who is safe.';
+        }
         emptyCard.classList.remove('hidden');
         activeLayout.classList.add('hidden');
         return;

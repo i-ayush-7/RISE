@@ -75,6 +75,10 @@ export function mount(container, store) {
       contentSlot.appendChild(h('p', { className: 'muted' }, 'Plan details unavailable.'));
       return;
     }
+    if (plan.ok === false && plan.error) {
+      contentSlot.appendChild(h('p', { className: 'muted' }, plan.error));
+      return;
+    }
 
     if (currentTab === 'members') {
       const members = plan.members || [];

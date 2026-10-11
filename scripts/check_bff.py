@@ -422,6 +422,38 @@ def check_bff():
                 else:
                     print("(40) GET /js/views/home.js FAIL", resp40.status, ct40)
 
+            # (43) GET /api/status returns JSON without a top-level "ok" key and with "server":"up"
+            req43 = urllib.request.Request("http://127.0.0.1:8080/api/status")
+            with urllib.request.urlopen(req43) as resp43:
+                data43 = json.loads(resp43.read().decode("utf-8"))
+                if resp43.status == 200 and "ok" not in data43 and data43.get("server") == "up":
+                    print("(43) GET /api/status has no ok key and server is up: PASS")
+                else:
+                    print(f"(43) FAIL /api/status {resp43.status} {data43}")
+
+            # (44) POST /api/tool get_household_plan with correct Origin returns ok true and The Rivera Family
+            req44 = urllib.request.Request(
+                "http://127.0.0.1:8080/api/tool",
+                data=json.dumps({"name": "get_household_plan", "arguments": {}}).encode("utf-8"),
+                headers={"Content-Type": "application/json", "Origin": "http://127.0.0.1:8080"}
+            )
+            with urllib.request.urlopen(req44) as resp44:
+                data44 = json.loads(resp44.read().decode("utf-8"))
+                if resp44.status == 200 and data44.get("ok") is True and data44.get("result", {}).get("name") == "The Rivera Family":
+                    print("(44) POST /api/tool get_household_plan returns The Rivera Family: PASS")
+                else:
+                    print(f"(44) FAIL /api/tool {resp44.status} {data44}")
+
+            # (45) after frontend files are served, page body of GET / still contains exactly one "<script"
+            req45 = urllib.request.Request("http://127.0.0.1:8080/")
+            with urllib.request.urlopen(req45) as resp45:
+                body45 = resp45.read().decode("utf-8")
+                scripts45 = re.findall(r"<script\b", body45, re.IGNORECASE)
+                if resp45.status == 200 and len(scripts45) == 1:
+                    print("(45) GET / body contains exactly one <script: PASS")
+                else:
+                    print(f"(45) FAIL GET / scripts: {len(scripts45)}")
+
 
         finally:
             if sys.platform == "win32":

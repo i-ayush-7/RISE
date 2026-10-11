@@ -152,6 +152,13 @@ export function mount(container, store) {
 
   function renderAdvice(adviceState) {
     clear(panelAdvice);
+    if (adviceState && adviceState.ok === false && adviceState.error) {
+      const card = h('div', { className: 'card' });
+      card.appendChild(h('h2', {}, 'Safety advice unavailable'));
+      card.appendChild(h('p', { className: 'muted' }, adviceState.error));
+      panelAdvice.appendChild(card);
+      return;
+    }
     const layout = h('div', { className: 'two' });
 
     // Actions card

@@ -87,7 +87,7 @@ function init() {
 
   header.appendChild(h('div', { className: 'sp' }));
 
-  const connStatus = h('div', { style: 'display: flex; align-items: center;' });
+  const connStatus = h('div', { className: 'conn-status' });
   const connDot = h('span', { className: 'dot' });
   const connText = h('span', { className: 'note muted' }, 'Connected');
   connStatus.appendChild(connDot);
@@ -120,11 +120,14 @@ function init() {
     className: 'card hidden',
     style: 'margin: 40px auto; max-width: 520px; text-align: center;'
   });
-  errorScreen.appendChild(h('h2', {}, 'Connection lost'));
-  errorScreen.appendChild(h('p', { className: 'muted' },
-    'Could not reach the R.I.S.E. backend service. Make sure the server is running:'));
-  errorScreen.appendChild(h('code', { style: 'display: inline-block; padding: 10px 16px; margin: 12px 0;' },
-    'python -m bff'));
+  const errorTitle = h('h2', {}, 'Connection lost');
+  errorScreen.appendChild(errorTitle);
+  const errorMsg = h('p', { className: 'muted' },
+    'Could not reach the R.I.S.E. backend service. Make sure the server is running:');
+  errorScreen.appendChild(errorMsg);
+  const errorCode = h('code', { style: 'display: inline-block; padding: 10px 16px; margin: 12px 0;' },
+    'python -m bff');
+  errorScreen.appendChild(errorCode);
   errorScreen.appendChild(h('br'));
   const retryBtn = h('button', {
     type: 'button',
@@ -135,6 +138,33 @@ function init() {
   errorScreen.appendChild(retryBtn);
   contentCol.appendChild(errorScreen);
 
+  function showConnectionLost() {
+    store.set({ status: { ...(store.get().status || {}), server: 'down' } });
+    errorTitle.textContent = 'Connection lost';
+    errorMsg.textContent = 'Could not reach the R.I.S.E. backend service. Make sure the server is running:';
+    errorCode.textContent = 'python -m bff';
+    errorCode.style.display = 'inline-block';
+    retryBtn.textContent = 'Retry connection';
+    errorScreen.classList.remove('hidden');
+    main.classList.add('hidden');
+  }
+
+  function showServerDown() {
+    store.set({ status: { ...(store.get().status || {}), server: 'down' } });
+    errorTitle.textContent = 'MCP server unavailable';
+    errorMsg.textContent = 'The BFF is running but its MCP server is not answering.';
+    errorCode.textContent = 'python -m bff';
+    errorCode.style.display = 'none';
+    retryBtn.textContent = 'Retry connection';
+    errorScreen.classList.remove('hidden');
+    main.classList.add('hidden');
+  }
+
+  function clearError() {
+    errorScreen.classList.add('hidden');
+    main.classList.remove('hidden');
+  }
+
   let currentViewName = null;
   let activeViewInstance = null;
   let lastAnnouncedMsg = '';
@@ -144,12 +174,10 @@ function init() {
     const mode = (state.alerts && state.alerts.data_mode ? state.alerts.data_mode.toUpperCase() : 'SIMULATED');
     modeBadge.textContent = mode;
 
-    const isUp = state.status && state.status.server === 'up';
+    const isUp = Boolean(state.status && state.status.server === 'up');
     if (isUp) {
       connDot.classList.remove('down');
       connText.textContent = 'Connected';
-      errorScreen.classList.add('hidden');
-      main.classList.remove('hidden');
     } else {
       connDot.classList.add('down');
       connText.textContent = 'Offline';
@@ -198,17 +226,46 @@ function init() {
 
   store.subscribe((state) => renderApp(state));
 
+  // Polling timers: one chain per poll type
+  let activityTimer = null;
+  let statusTimer = null;
+  let checkinTimer = null;
+
+  function cancelTimers() {
+    if (activityTimer) { clearTimeout(activityTimer); activityTimer = null; }
+    if (statusTimer) { clearTimeout(statusTimer); statusTimer = null; }
+    if (checkinTimer) { clearTimeout(checkinTimer); checkinTimer = null; }
+  }
+
+  function scheduleActivity(ms = 2000) {
+    if (activityTimer) clearTimeout(activityTimer);
+    activityTimer = setTimeout(pollActivity, ms);
+  }
+
+  function scheduleStatus(ms = 10000) {
+    if (statusTimer) clearTimeout(statusTimer);
+    statusTimer = setTimeout(pollStatus, ms);
+  }
+
+  function scheduleCheckin(ms = 5000) {
+    if (checkinTimer) clearTimeout(checkinTimer);
+    checkinTimer = setTimeout(pollCheckin, ms);
+  }
+
   async function initialFetch() {
+    cancelTimers();
     const stat = await getStatus();
-    if (!stat.ok) {
-      store.set({ status: { server: 'down' } });
-      errorScreen.classList.remove('hidden');
-      main.classList.add('hidden');
+    const isReachable = Boolean(stat && !stat.network && stat.server);
+    if (!isReachable) {
+      showConnectionLost();
+      return;
+    }
+    if (stat.server === 'down') {
+      showServerDown();
       return;
     }
 
-    errorScreen.classList.add('hidden');
-    main.classList.remove('hidden');
+    clearError();
 
     const [p, a, ad, c, act] = await Promise.all([
       tool('get_household_plan', {}),
@@ -221,50 +278,51 @@ function init() {
     store.set({
       scenario: stat.scenario || 'flood',
       status: { ...stat, server: 'up' },
-      plan: p.ok ? p.result : null,
-      alerts: a.ok ? a.result : { ok: false, error: a.error, alerts: [] },
-      advice: ad.ok ? ad.result : { ok: false, error: ad.error },
-      checkin: c.ok && typeof c.result === 'object' ? { ...c.result, active: true } : { active: false },
+      plan: p.ok ? p.result : { ok: false, error: p.error || 'Failed to load household plan.' },
+      alerts: a.ok ? a.result : { ok: false, error: a.error || 'Failed to load active alerts.', alerts: [] },
+      advice: ad.ok ? ad.result : { ok: false, error: ad.error || 'Failed to load safety advice.' },
+      checkin: c.ok && typeof c.result === 'object' ? { ...c.result, active: true } : { active: false, error: c.error && !c.error.includes('No check-in is active') ? c.error : undefined },
       activity: act.ok && Array.isArray(act.entries) ? act.entries : []
     });
+
+    scheduleActivity(2000);
+    scheduleStatus(10000);
+    scheduleCheckin(5000);
   }
 
-  initialFetch();
-
-  // Polling loops
-  let isPolling = true;
-
   async function pollActivity() {
-    if (!isPolling || document.hidden) return;
+    if (document.hidden) return;
     try {
       const act = await getActivity(0);
-      if (act.ok && Array.isArray(act.entries)) {
+      if (act && act.ok && Array.isArray(act.entries)) {
         store.set({ activity: act.entries });
       }
     } catch (e) {}
-    if (isPolling) setTimeout(pollActivity, 2000);
+    scheduleActivity(2000);
   }
 
   async function pollStatus() {
-    if (!isPolling || document.hidden) return;
+    if (document.hidden) return;
     try {
       const stat = await getStatus();
-      if (stat.ok) {
+      if (stat && !stat.network && stat.server === 'up') {
         store.set({
           scenario: stat.scenario || store.get().scenario,
           status: { ...store.get().status, ...stat, server: 'up' }
         });
+      } else if (stat && !stat.network && stat.server === 'down') {
+        store.set({ status: { ...store.get().status, server: 'down' } });
       } else {
         store.set({ status: { ...store.get().status, server: 'down' } });
       }
     } catch (e) {
       store.set({ status: { ...store.get().status, server: 'down' } });
     }
-    if (isPolling) setTimeout(pollStatus, 10000);
+    scheduleStatus(10000);
   }
 
   async function pollCheckin() {
-    if (!isPolling || document.hidden) return;
+    if (document.hidden) return;
     const s = store.get();
     if (s.checkin.active || s.view === 'board') {
       try {
@@ -276,24 +334,21 @@ function init() {
         }
       } catch (e) {}
     }
-    if (isPolling) setTimeout(pollCheckin, 5000);
+    scheduleCheckin(5000);
   }
 
-  setTimeout(pollActivity, 2000);
-  setTimeout(pollStatus, 10000);
-  setTimeout(pollCheckin, 5000);
+  initialFetch();
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
       initialFetch();
-      setTimeout(pollActivity, 1000);
-      setTimeout(pollStatus, 2000);
-      setTimeout(pollCheckin, 1000);
     }
   });
 
   window.addEventListener('focus', () => {
-    initialFetch();
+    if (!store.get().status || store.get().status.server !== 'up') {
+      initialFetch();
+    }
   });
 }
 

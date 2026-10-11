@@ -51,6 +51,7 @@ html, body {
 
 body {
   margin: 0;
+  overflow: hidden;
   color: var(--t);
   font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-variant-numeric: tabular-nums;
@@ -62,6 +63,12 @@ body {
 
 body.big {
   font-size: 19px;
+}
+
+#app {
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 button, input, select, textarea {
@@ -94,6 +101,8 @@ button, input, select, textarea {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
   height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 nav {
@@ -103,6 +112,8 @@ nav {
   padding: 14px 8px;
   background: rgba(10, 16, 30, 0.55);
   border-right: 1px solid var(--b);
+  height: 100%;
+  overflow-y: auto;
 }
 
 nav button {
@@ -137,19 +148,31 @@ nav button[aria-current="page"] {
 }
 
 main {
+  flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
   padding: 12px 22px;
   outline: none;
+  overflow-y: auto;
 }
 
-.top {
+header, .top {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
-  margin-bottom: 12px;
+  padding: 12px 22px;
+  padding: 12px calc(22px + env(safe-area-inset-right, 0px)) 12px calc(22px + env(safe-area-inset-left, 0px));
+  margin-bottom: 0;
+}
+
+.conn-status {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .logo {
@@ -1023,16 +1046,21 @@ dialog::backdrop {
 @media (max-width: 760px) {
   .app {
     grid-template-columns: 1fr;
+    height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
   }
   nav {
     position: fixed;
     inset: auto 0 0 0;
     flex-direction: row;
     z-index: 50;
+    height: auto;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
     border-right: 0;
     border-top: 1px solid var(--b);
     overflow-x: auto;
+    overflow-y: hidden;
     background: var(--p);
   }
   nav button {
@@ -1041,7 +1069,8 @@ dialog::backdrop {
     min-height: 52px;
   }
   main {
-    padding: 10px 12px 84px;
+    padding: 10px 12px calc(84px + env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
   }
   .cb {
     display: none;
