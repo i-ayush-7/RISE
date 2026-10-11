@@ -1,171 +1,140 @@
-# RISE MCP Server
+# R.I.S.E. (Rapid Incident Safety & Escalation)
 
-This is the initial iteration of the Rapid Incident Safety & Escalation (RISE) MCP Server.
+A household emergency copilot that never guesses. R.I.S.E. is a self-hosted
+[MCP](https://modelcontextprotocol.io) server (Streamable HTTP) that an assistant such as
+Alexa+ can call during a flood, heatwave or other alert, plus a web front end that
+simulates the assistant side.
 
-## Prerequisites
-- Python 3.10+
+Built for the Amazon Developer Hackathon, **Alexa+ track**.
 
-## Installation
+> **Honest scope:** Alexa+ itself is *simulated* by a web chat with a rules-based parser.
+> The MCP server, its tools, the safety rules and the security layer are real.
+> The flood and heatwave drills are fixtures. NWS data covers the U.S. only.
 
-Create a virtual environment and install dependencies:
+## What it does
 
-```bash
-# Create the virtual environment
+When a warning arrives, a family has to remember who needs extra help, who to call first and
+where to meet. R.I.S.E. keeps that plan and answers from it:
+
+- **Household plan:** people, pets, needs, contacts and meeting points (SQLite, validated).
+- **Alerts:** a simulated drill, a recorded real NWS warning, or live NWS data.
+  Every alert is labeled with its data mode.
+- **Advice:** a ranked action list from fixed rules, with the alert's official instructions
+  copied word for word.
+- **Family check-in:** records who has confirmed they are safe, escalates at 5, 10 and 20
+  minutes (demo thresholds) from asking, to calling directly, to contacting your emergency
+  contact, and drafts a message you can copy.
+
+**R.I.S.E. never contacts anyone.** It tells you who to call.
+
+## Quick start (about 2 minutes)
+
+Developed and tested on Windows with Python 3.13. Other platforms are untested.
+
+```powershell
+git clone https://github.com/i-ayush-7/RISE.git
+cd RISE
 python -m venv venv
-
-# Activate on Windows (PowerShell):
-.\venv\Scripts\Activate.ps1
-
-# Activate on macOS/Linux (Bash/Zsh):
-source venv/bin/activate
-
-# Install dependencies
+.\venv\Scripts\Activate.ps1        # macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
-```
-
-## Web Interface
-
-Start the backend for frontend (BFF):
-```bash
 python -m bff
 ```
-Open your browser to `http://127.0.0.1:8080`.
 
-The web interface provides 6 dedicated views:
-- **Chat**: Live conversational assistant, situation summary, and hero status photo.
-- **Board**: Real-time check-in status, safety meter, and copy-ready escalation messages.
-- **Alerts**: Active emergency alerts and tailored safety advice tabs.
-- **Plan**: Read-only household roster, emergency contacts, and safe meeting points.
-- **Log**: MCP tool activity ledger showing calls, statuses, durations, and payloads.
-- **More**: Scenario switcher (floods, storms, heatwaves), demo state reset, and high-contrast / large text toggle.
+Open **http://127.0.0.1:8080**. The command starts everything: the web page, a backend
+that acts as an MCP client, and the MCP server on a throwaway copy of the demo database.
+Press Ctrl+C to stop; the child server is stopped with it.
 
-### Security Note
-The web page never holds or receives the backend bearer token. The browser connects only to its own origin (`/api/*`), and the BFF attaches authentication credentials server-side when proxying requests to the MCP server.
+Try: **More > Flood drill**, then in Chat: `What should we do?`, `Start a check-in`,
+`Maria is safe`, `Elena fell and cannot stand`, and on the Board press **Skip time +5 min**
+to see escalation.
 
-### Accessibility & Navigation
-- **Skip Link**: Top-of-page "Skip to content" link allows immediate keyboard jumping to main views.
-- **Keyboard Navigation**: Standard `Tab` navigation for all interactive controls (minimum 44px touch/click target size).
-- **Tabbed Panels**: Arrow keys (`ArrowLeft`, `ArrowRight`) to cycle between tabs on the Alerts view.
-- **Screen Reader Announcements**: Live region (`#live-announcer`) announces view changes and dynamic updates.
+## Run the tests
 
-## Running the Server
-
-Start the server using Python. It will run on `http://127.0.0.1:8000/mcp` using the **Streamable HTTP transport**.
-
-```bash
-python server.py
-```
-
-## Testing the Server
-
-You can test the server using the provided `test_client.py` script:
-
-```bash
-# In a new terminal, with the virtual environment activated:
-python test_client.py
-```
-
-Output should look like this:
-```
-Connecting to http://127.0.0.1:8000/mcp...
-Connected! Initializing session...
-Calling tool 'ping'...
-Result: [TextContent(type='text', text='Pong! RISE MCP Server is running.', annotations=None, meta=None)]
-```
-
-## Data Model
-
-The server uses a local SQLite database (in `data/rise.db`) to store household emergency information securely. 
-
-The schema includes:
-- **households**: Basic family info and address notes.
-- **members**: Family members (including pets), ages, support levels, and medical/mobility needs.
-- **contacts**: Emergency contacts (e.g., family doctors, out-of-state relatives) with phone numbers and priority.
-- **meeting_points**: Safe gathering spots (primary, backup, out-of-area).
-
-To initialize the database with synthetic demo data, run:
-```bash
-python -m rise.seed
-```
-
-
-## Available Tools (MCP)
-
-This server exposes several tools for any MCP-compliant client (like Claude Desktop) to plan and manage households:
-
-- `list_households`: Lists all registered households.
-- `get_household_plan`: Retrieves the full plan (members, contacts, meeting points).
-- `list_people_needing_help`: Lists members with mobility/medical needs or who require assistance.
-- `add_member` / `update_member`: Manage household members.
-- `add_contact` / `update_contact`: Manage emergency contacts.
-- `add_meeting_point` / `update_meeting_point`: Manage rally points.
-- `get_active_alerts`: Retrieve active alerts for the household area.
-- `get_safety_advice`: Get tailored safety instructions and actions based on alerts and the household's unique needs.
-
-## Configuration
-You can set the following environment variables:
-- `RISE_DB_PATH`: Override the default database path.
-- `RISE_ALERT_SOURCE`: The source of alerts. Valid values: `fixture`, `nws`, `nws_recorded` (default: `fixture`).
-- `RISE_FIXTURE_SCENARIO`: The active scenario for simulated alerts (e.g. `flood_warning`, `heatwave_warning`, `none`).
-- `RISE_NWS_POINT`: Coordinates for NWS alerts when source is `nws` (e.g., `30.7,-86.5`).
-- `RISE_NWS_RECORDING`: The name of the recording file when source is `nws_recorded` (e.g., `sample`).
-
-Example with environment variables:
-```bash
-# Windows PowerShell
-$env:RISE_ALERT_SOURCE="nws"
-$env:RISE_NWS_POINT="30.7,-86.5"
-.\venv\Scripts\python.exe server.py
-
-# Mac/Linux
-RISE_ALERT_SOURCE=nws RISE_NWS_POINT=30.7,-86.5 ./venv/bin/python server.py
-```
-
-## Check-in and Escalation
-
-RISE includes check-in tools (start_checkin, ecord_checkin, get_checkin_status, close_checkin) to help a household account for its members during an emergency.
-
-**Note**: R.I.S.E. never contacts anyone automatically. The tools create a local tracking record and provide advice on who to contact next. If anyone is in immediate danger, call your local emergency number.
-
-Escalation thresholds are based on elapsed time:
-- < 5 minutes: Level 0 (ask to confirm safe)
-- 5-9 minutes: Level 1 (call directly)
-- 10-19 minutes: Level 2 (escalate to priority 1 contact)
-- >= 20 minutes: Level 3 (escalate to priority 2 contact and advise local emergency services)
-
-
-## Security
-
-The MCP server uses a bearer token for authentication to protect sensitive household data and emergency plans. The token prevents unauthorized access from malicious websites or unauthorized local apps. 
-
-**Generating a Token:**
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(32))"
-```
-
-**Starting the Server Securely:**
-PowerShell:
 ```powershell
-$env:RISE_AUTH_TOKEN="YOUR_GENERATED_TOKEN"
-python server.py
+python -m unittest discover tests
+python scripts\check_bff.py        # end-to-end checks; starts and stops its own servers
 ```
 
-Bash:
-```bash
-RISE_AUTH_TOKEN="YOUR_GENERATED_TOKEN" python server.py
+## Use the MCP server on its own
+
+```powershell
+python -m rise.seed                # creates data/rise.db with a fictional household
+$env:RISE_AUTH_TOKEN = python -c "import secrets; print(secrets.token_urlsafe(32))"
+python server.py                   # http://127.0.0.1:8000/mcp  (Streamable HTTP)
 ```
 
-The server binds exclusively to `127.0.0.1` (localhost) by default. If you need to access the server locally without authentication for development, set `RISE_ALLOW_NO_AUTH=1`.
+Every request needs `Authorization: Bearer <token>`. The server refuses to start without a
+token of at least 32 characters. `test_client.py` is a minimal client. The connection
+negotiates protocol version 2025-11-25.
 
-The server also implements Host and Origin header validation to protect against DNS rebinding attacks. You can allow additional hosts by specifying a comma-separated list in `RISE_ALLOWED_HOSTS` and `RISE_ALLOWED_ORIGINS`.
+### Tools (16)
 
-### Public tunnel (optional)
-A quick tunnel (for example Cloudflare's) exposes the server publicly over the internet.
-If you use a tunnel, the bearer token and `RISE_ALLOWED_HOSTS` must be set to the tunnel's hostname first. The token must be rotated afterwards.
-Nothing real should be stored in the household database. Judges can run the project locally without any tunnel.
+| Group | Tools |
+|---|---|
+| Health | `ping` |
+| Plan (read) | `list_households`, `get_household_plan`, `list_people_needing_help` |
+| Plan (write) | `add_member`, `update_member`, `add_contact`, `update_contact`, `add_meeting_point`, `update_meeting_point` |
+| Alerts and advice | `get_active_alerts`, `get_safety_advice` |
+| Check-in | `start_checkin`, `record_checkin`, `get_checkin_status`, `close_checkin` |
 
-### Demo Mode
-For demonstration purposes, you can enable a simulated clock to test escalations without waiting in real-time.
-- Set `RISE_DEMO_MODE=1` and `RISE_DEMO_CLOCK_FILE=/absolute/path/to/clock.txt`.
-- The server will read an integer (minutes to advance) from that file and treat the current time as `real + offset`.
-- Demo mode is strictly local-only and must NEVER be used with a public tunnel (like Cloudflare) or `RISE_ALLOWED_HOSTS`. Any attempt to expose the server while in demo mode will cause a startup error.
+There are deliberately **no delete tools**.
+
+## How it works
+
+```
+Browser (web/)  ->  BFF (bff/, 127.0.0.1:8080)  ->  MCP server (server.py, 127.0.0.1:8000/mcp)
+ no token           holds the token, MCP client       tools, rules, SQLite, alert providers
+```
+
+- `rise/` holds the data layer, the pure advice and escalation engines, and the alert providers.
+- `bff/` is the web backend, the tool allowlist, the chat intent parser and the process manager.
+- `web/` is plain HTML, CSS and JavaScript modules with no build step.
+
+## Safety design
+
+- Someone is marked safe only when a person says so plainly. Questions, hedges, negations,
+  conditionals and mixed statements record nothing and get a clarifying reply.
+- "Everyone is confirmed safe" appears only when the server says every person and pet is.
+- If alerts cannot be checked, the app says so; it never shows "no alerts".
+- Alert and note text is displayed as data, never treated as instructions.
+- Medical details never go into draft messages.
+
+## Data modes and configuration
+
+| Variable | Purpose |
+|---|---|
+| `RISE_ALERT_SOURCE` | `fixture` (default), `nws_recorded`, or `nws` (live, U.S. only) |
+| `RISE_FIXTURE_SCENARIO` | `flood_warning`, `heatwave_warning`, `none` |
+| `RISE_NWS_RECORDING` | recording name (default `sample`, a real past NWS warning) |
+| `RISE_NWS_POINT` | `lat,lon` for live NWS alerts |
+| `RISE_CONTACT` | contact string sent in the NWS User-Agent header (optional) |
+| `RISE_DB_PATH` | database file (default `data/rise.db`) |
+| `RISE_AUTH_TOKEN` | bearer token for the MCP server (32+ characters) |
+| `RISE_ALLOWED_HOSTS`, `RISE_ALLOWED_ORIGINS` | extra Host and Origin allowlist entries |
+| `RISE_ALLOW_NO_AUTH` | `1` disables the token for local development only |
+| `RISE_DEMO_MODE`, `RISE_DEMO_CLOCK_FILE` | simulated clock for demos (local only) |
+| `RISE_BFF_PORT`, `RISE_MCP_PORT` | ports (defaults 8080 and 8000) |
+
+## Security notes
+
+Bearer-token authentication, Host and Origin checks, request size limits, localhost-only
+binding, strict Content-Security-Policy on the web page, and the token is never sent to the
+browser. Demo mode is refused when any non-local host is allowed. **Do not expose the web
+interface or demo mode through a public tunnel.** This project has not had a professional
+security review.
+
+## Limitations
+
+- Alexa+ is simulated; nothing here has been tested against the real service.
+- Chat understanding is rule-based and intentionally conservative.
+- Escalation timings are demo defaults, not official guidance.
+- Live alerts cover the United States only (National Weather Service).
+- General preparedness guidance only; not medical or emergency-services advice. If anyone is
+  in danger, call your local emergency number.
+- Plan editing is available through MCP tools but not yet in the web interface.
+
+## Credits and license
+
+MIT License (see `LICENSE`). Alert data from the U.S. National Weather Service (weather.gov).
+Hero image: artwork supplied by the author. Built with AI coding agents
+(Antigravity) that the author directed and reviewed.
