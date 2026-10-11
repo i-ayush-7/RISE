@@ -362,6 +362,28 @@ def check_bff():
             if "token" not in str(res28).lower() and "token" not in str(res32).lower():
                 print("(33) no token leaked in new checks: PASS")
 
+            res34 = post_chat("Any alerts?")
+            if "Evacuate immediately to higher ground." in res34.get("reply", ""):
+                print("(34) chat alerts contains instructions: PASS")
+            else:
+                print("(34) chat alerts contains instructions: FAIL", res34)
+
+            text35 = "Maria isn" + chr(0x2019) + "t safe"
+            res35 = post_chat(text35)
+            if get_member_status("Maria Rivera") == "pending":
+                print("(35) curly isn't safe -> pending: PASS")
+            else:
+                print("(35) curly isn't safe -> pending: FAIL", res35)
+
+            text36 = "Elena doesn" + chr(0x2019) + "t need help"
+            res36 = post_chat(text36)
+            st36 = get_status()
+            has_needs_36 = any(m.get("status") == "needs_help" for m in st36.get("members", []))
+            if not has_needs_36:
+                print("(36) curly doesn't need help -> nobody needs_help: PASS")
+            else:
+                print("(36) curly doesn't need help -> nobody needs_help: FAIL", res36)
+
         finally:
             if sys.platform == "win32":
                 subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc2.pid)], capture_output=True)

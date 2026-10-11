@@ -25,16 +25,29 @@ class TestIntentsRegression(unittest.TestCase):
             ("Elena fell and cannot stand", "needs_help"),
             ("Leo needs help", "needs_help"),
             ("Carlos isn't answering", "not_responding"),
+            ("Carlos isn\u2019t answering", "not_responding"),
+            ("Carlos isnt answering", "not_responding"),
             ("I can't reach Maria", "not_responding"),
+            ("I can\u2019t reach Maria", "not_responding"),
+            ("I cant reach Maria", "not_responding"),
+            ("Maria cant be reached", "not_responding"),
             ("Maria is safe now", "safe"),
             ("Maria is safe at the park", "safe"),
             ("Carlos and Maria are both safe", "safe"),
             ("Maria, Carlos and Leo are safe", "safe"),
             ("Please mark Maria as safe", "safe"),
             ("Maria's safe", "safe"),
+            ("Maria\u2019s safe", "safe"),
             ("Elena fell", "needs_help"),
+            ("Elena fell and can\u2019t stand", "needs_help"),
+            ("Elena fell and cant stand", "needs_help"),
             ("Leo needs help now", "needs_help"),
-            ("Carlos and Leo aren't answering", "not_responding")
+            ("Carlos and Leo aren't answering", "not_responding"),
+            ("Carlos and Leo aren\u2019t answering", "not_responding"),
+            ("Carlos and Leo arent answering", "not_responding"),
+            ("Maria is safe.", "safe"),
+            ("Maria is safe!", "safe"),
+            ("Maria is safe!!!", "safe")
         ]
         for text, expected_status in cases:
             res = parse_intent(text, self.members)
@@ -49,6 +62,7 @@ class TestIntentsRegression(unittest.TestCase):
             "Where is Leo?",
             "Maria is not safe",
             "Elena isn't okay",
+            "Elena isn\u2019t okay",
             "Maria unsafe",
             "mark everyone safe",
             "everyone is safe",
@@ -73,6 +87,7 @@ class TestIntentsRegression(unittest.TestCase):
             "Is Maria safe or hurt",
             "Maria is not hurt",
             "Elena doesn't need help",
+            "Elena doesn\u2019t need help",
             "Leo is no longer safe",
             "Maria is safe, I guess",
             "not sure Maria is safe",
@@ -82,7 +97,25 @@ class TestIntentsRegression(unittest.TestCase):
             "Maria is safe, Carlos is at work",
             "Maria is safe because Leo said so",
             "Maria is not answering but Elena is safe",
-            "Alex is safe"
+            "Alex is safe",
+            # Step 8c3 additions:
+            "Maria isn\u2019t safe",
+            "Maria isnt safe",
+            "Maria aint safe",
+            "Maria isnt ok",
+            "Maria is NOT safe",
+            "Maria is not safe yet",
+            "Maria wasn\u2019t safe",
+            "Elena doesnt need help",
+            "Maria isn\u2019t hurt",
+            "Maria isnt hurt",
+            "Leo is not injured",
+            "Is Maria safe\u2019?",
+            "Maria is safe not",
+            "Maria isn\u2019t safe but Elena is",
+            "Maria is safe \u2019I think\u2019",
+            "Maria dont need help",
+            "Carlos isn\u2019t answering but Maria is safe"
         ]
         for text in cases:
             res = parse_intent(text, self.members)
@@ -97,7 +130,20 @@ class TestIntentsRegression(unittest.TestCase):
             "Maria is safe and Leo isn't answering": "clarify_multiple",
             "I think Maria is safe": "confirm_needed",
             "Maria is not hurt": "clarify_negated",
-            "Elena doesn't need help": "clarify_negated"
+            "Elena doesn't need help": "clarify_negated",
+            # Step 8c3 exact intents:
+            "Maria isn\u2019t safe": "clarify_not_safe",
+            "Elena isn\u2019t okay": "clarify_not_safe",
+            "Maria isnt safe": "clarify_not_safe",
+            "Maria aint safe": "clarify_not_safe",
+            "Maria isnt ok": "clarify_not_safe",
+            "Maria wasn\u2019t safe": "confirm_needed",
+            "Elena doesn\u2019t need help": "clarify_negated",
+            "Elena doesnt need help": "clarify_negated",
+            "Maria isn\u2019t hurt": "clarify_negated",
+            "Maria is safe \u2019I think\u2019": "confirm_needed",
+            "Maria isn\u2019t safe but Elena is": ["clarify_multiple", "clarify_negated"],
+            "Carlos isn\u2019t answering but Maria is safe": "clarify_multiple"
         }
         for text, expected in cases.items():
             res = parse_intent(text, self.members)
@@ -110,8 +156,6 @@ class TestIntentsRegression(unittest.TestCase):
         # "look everyone, Maria is fine" does not trigger on "ok"
         res = parse_intent("look everyone, Maria is fine", self.members)
         self.assertEqual(res.get("intent"), "mark_all_refused")
-        # wait, "fine" is a status word, and "everyone" is present.
-        # the test says: "does not trigger on ok". OK.
         
         # "my fellow Maria" does not trigger needs_help
         res2 = parse_intent("my fellow Maria", self.members)
@@ -142,18 +186,24 @@ class TestIntentsRegression(unittest.TestCase):
             res2 = parse_intent(text, self.members)
             self.assertEqual(res1, res2)
             
-        # 40 generated hedge/negation/question variants of "Maria is safe"
-        prefixes = ["if", "maybe", "perhaps", "probably", "i think", "i guess", "i hope", "hopefully", "i believe", "not sure", "dunno", "according to", "claims", "reported"]
-        suffixes = ["?", " I guess", " maybe", ", right?"]
+        # 40 generated variants of "Maria is safe" with a negation, hedge or question added,
+        # using straight, curly and missing apostrophes
+        modifiers = [
+            "if", "maybe", "perhaps", "probably", "i think", "\u2019i think\u2019", "'i think'",
+            "i guess", "i hope", "hopefully", "i believe", "not sure", "dunno",
+            "wasn't", "wasn\u2019t", "wasnt", "isn't", "isn\u2019t", "isnt", "aint",
+            "not", "never", "hardly", "barely", "claims", "says", "told"
+        ]
+        suffixes = ["?", "\u2019?", "'?", " I guess", " maybe", ", right?"]
         variants = []
-        for p in prefixes:
-            variants.append(f"{p} Maria is safe")
-            variants.append(f"{p}, Maria is safe")
+        for m in modifiers:
+            variants.append(f"{m} Maria is safe")
+            variants.append(f"Maria {m} safe")
+            variants.append(f"Maria is {m} safe")
         for s in suffixes:
             variants.append(f"Maria is safe{s}")
-        for p in prefixes:
-            for s in suffixes:
-                variants.append(f"{p} Maria is safe{s}")
+        for m in ["wasn't", "wasn\u2019t", "wasnt", "isn't", "isn\u2019t", "isnt"]:
+            variants.append(f"Maria {m} safe?")
         
         for text in variants[:40]:
             res = parse_intent(text, self.members)

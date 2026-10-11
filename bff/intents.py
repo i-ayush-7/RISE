@@ -12,6 +12,13 @@ def parse_intent(text: Any, members: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(text, str):
         return {"intent": "invalid"}
 
+    apostrophes = ("\u2018", "\u2019", "\u02bc", "\u2032", "\uff07")
+    quotes = ("\u201c", "\u201d")
+    for ch in apostrophes:
+        text = text.replace(ch, "'")
+    for ch in quotes:
+        text = text.replace(ch, '"')
+
     chars = []
     for c in text:
         cat = unicodedata.category(c)
@@ -85,8 +92,9 @@ def parse_intent(text: Any, members: List[Dict[str, Any]]) -> Dict[str, Any]:
     if ambiguous:
         return {"intent": "ambiguous", "candidates": candidates}
         
+    q_test = re.sub(r'[!?.]+', lambda m: '?' if '?' in m.group(0) else m.group(0)[-1], cleaned).strip()
     is_q = False
-    if cleaned.endswith("?"):
+    if q_test.endswith("?"):
         is_q = True
     else:
         q_words = {"is", "are", "was", "were", "did", "does", "do", "has", "have", "can", "could", "where", "how", "what", "why", "who", "when", "will", "should", "would"}
@@ -136,7 +144,7 @@ def parse_intent(text: Any, members: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not is_q and names_matched:
         hedge_words = ["if", "unless", "whether", "maybe", "perhaps", "probably", "possibly", "might", "i think", "i guess", "i hope", "hopefully", "i believe", "i suppose", "i assume", "not sure", "unsure", "should be", "could be", "seems", "apparently", "supposedly", "tell me", "let me know", "wondering", "i wonder", "no idea", "dunno"]
         attr_words = ["says", "said", "told", "texted", "messaged", "called", "heard", "claims", "reported", "according to", "relayed"]
-        tense_words = ["was", "were", "will", "would", "going to", "gonna", "used to", "earlier", "yesterday", "last night", "before", "soon", "later", "tomorrow", "no longer", "once", "until"]
+        tense_words = ["was", "were", "wasn't", "wasnt", "weren't", "werent", "will", "would", "going to", "gonna", "used to", "earlier", "yesterday", "last night", "before", "soon", "later", "tomorrow", "no longer", "once", "until"]
         
         gate1_phrases = hedge_words + attr_words + tense_words
         if has_phrase(gate1_phrases, lower_text):
@@ -149,34 +157,70 @@ def parse_intent(text: Any, members: List[Dict[str, Any]]) -> Dict[str, Any]:
                 hint = "not_responding"
             return {"intent": "confirm_needed", "names": names_matched, "hint_status": hint}
 
-        needs_phrases = ["needs help", "need help", "needs an ambulance", "help needed", "needs rescue", "hurt", "injured", "injury", "fell", "fallen", "collapsed", "fainted", "trapped", "stuck", "bleeding", "unconscious", "unresponsive", "in pain", "chest pain", "not breathing", "can't breathe", "cannot breathe", "can't walk", "cannot walk", "can't move", "cannot move", "can't stand", "cannot stand", "can't get up", "cannot get up"]
+        needs_phrases = [
+            "needs help", "need help", "needs an ambulance", "help needed", "needs rescue",
+            "hurt", "injured", "injury", "fell", "fallen", "collapsed", "fainted",
+            "trapped", "stuck", "bleeding", "unconscious", "unresponsive", "in pain",
+            "chest pain", "not breathing", "can't breathe", "cannot breathe", "cant breathe",
+            "can't walk", "cannot walk", "cant walk",
+            "can't move", "cannot move", "cant move",
+            "can't stand", "cannot stand", "cant stand",
+            "can't get up", "cannot get up", "cant get up"
+        ]
         needs_re = r'\bmark\b.*\bas needing help\b|\bmark\b.*\bhelp needed\b'
         
-        not_resp_phrases = ["not answering", "isn't answering", "aren't answering", "are not answering", "not responding", "isn't responding", "aren't responding", "are not responding", "no answer", "no response", "can't reach", "cannot reach", "didn't answer", "not picking up", "unreachable", "hasn't answered", "has not answered", "hasn't responded", "has not responded"]
+        not_resp_phrases = [
+            "not answering", "isn't answering", "isnt answering", "aren't answering", "arent answering",
+            "are not answering", "not responding", "isn't responding", "isnt responding",
+            "aren't responding", "arent responding", "are not responding",
+            "no answer", "no response",
+            "can't reach", "cannot reach", "cant reach",
+            "can't be reached", "cannot be reached", "cant be reached",
+            "didn't answer", "didnt answer",
+            "not picking up", "unreachable",
+            "hasn't answered", "hasnt answered", "has not answered",
+            "hasn't responded", "hasnt responded", "has not responded"
+        ]
         
         temp_text = lower_text
         for p in needs_phrases + not_resp_phrases:
             temp_text = re.sub(r'\b' + re.escape(p) + r'\b', '', temp_text)
         temp_text = re.sub(needs_re, '', temp_text)
         
-        neg_words = ["not", "no", "never", "none", "nobody", "nor", "without", "hardly", "barely", "cannot", "cant"]
+        texting_negs = [
+            "isnt", "arent", "wasnt", "werent", "doesnt", "dont", "didnt",
+            "cant", "wont", "couldnt", "aint", "shouldnt", "hasnt", "havent",
+            "hadnt", "wouldnt"
+        ]
+        neg_words = ["not", "no", "never", "none", "nobody", "nor", "without", "hardly", "barely", "cannot", "cant"] + texting_negs
         has_neg = has_phrase(neg_words, temp_text)
-        if re.search(r'\b\w+n\'t\b', temp_text):
+        if re.search(r"\b\w+n\'t\b", temp_text):
             has_neg = True
             
         all_status_words = ["safe", "okay", "ok", "fine", "accounted for", "hurt", "injured", "needs help", "need help", "checked in", "answering", "responding"]
-        neg_safe = ["not safe", "isn't safe", "is not ok", "is not okay", "is not fine", "unsafe", "not okay", "not fine", "isn't ok", "isn't okay"]
-        if has_phrase(neg_safe, lower_text):
+        neg_safe = [
+            "not safe", "is not safe", "are not safe", "isn't safe", "isnt safe", "aren't safe", "arent safe", "aint safe", "unsafe",
+            "not ok", "is not ok", "are not ok", "isn't ok", "isnt ok", "aren't ok", "arent ok", "aint ok",
+            "not okay", "is not okay", "are not okay", "isn't okay", "isnt okay", "aren't okay", "arent okay", "aint okay",
+            "not fine", "is not fine", "are not fine", "isn't fine", "isnt fine", "aren't fine", "arent fine", "aint fine"
+        ]
+        if has_neg and has_phrase(all_status_words, lower_text):
+            if len(names_matched) > 1 and has_phrase(["but"], lower_text):
+                return {"intent": "clarify_negated", "names": names_matched}
+            if has_phrase(neg_safe, lower_text):
+                return {"intent": "clarify_not_safe", "names": names_matched}
+            else:
+                return {"intent": "clarify_negated", "names": names_matched}
+        elif has_phrase(neg_safe, lower_text):
             return {"intent": "clarify_not_safe", "names": names_matched}
-        elif has_neg and has_phrase(all_status_words, lower_text):
-            return {"intent": "clarify_negated", "names": names_matched}
 
         has_safe = False
         has_needs = False
         has_not_resp = False
         
         safe_phrases = ["confirmed safe", "checked in", "made it", "arrived safe"]
-        if has_phrase(safe_phrases, lower_text) or re.search(r"\b(is|are|\'s)\s+(both\s+|all\s+)?(safe|okay|ok|fine|accounted for)\b", lower_text) or re.search(r'\bmark\b.*\b(as\s+)?(safe|okay)\b', lower_text):
+        safe_pattern = r"(?:\b(is|are)|\b\'s|(?<=\w)\'s)\s+(both\s+|all\s+)?(safe|okay|ok|fine|accounted for)\b"
+        if has_phrase(safe_phrases, lower_text) or re.search(safe_pattern, lower_text) or re.search(r'\bmark\b.*\b(as\s+)?(safe|okay)\b', lower_text):
             has_safe = True
             
         if has_phrase(needs_phrases, lower_text) or re.search(needs_re, lower_text):
@@ -197,7 +241,7 @@ def parse_intent(text: Any, members: List[Dict[str, Any]]) -> Dict[str, Any]:
             
             for p in safe_phrases + needs_phrases + not_resp_phrases:
                 gate4_text = re.sub(r'\b' + re.escape(p) + r'\b', ' ', gate4_text)
-            gate4_text = re.sub(r"\b(is|are|\'s)\s+(both\s+|all\s+)?(safe|okay|ok|fine|accounted for)\b", ' ', gate4_text)
+            gate4_text = re.sub(safe_pattern, ' ', gate4_text)
             gate4_text = re.sub(r'\bmark\b.*\b(as\s+)?(safe|okay)\b', ' ', gate4_text)
             gate4_text = re.sub(needs_re, ' ', gate4_text)
             
